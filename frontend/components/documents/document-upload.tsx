@@ -19,7 +19,8 @@ export function DocumentUpload({ onUploadSuccess }: DocumentUploadProps) {
 
       const file = acceptedFiles[0];
       const formData = new FormData();
-      formData.append("file", file);
+      // Backend expects multipart field name `files` (supports one or more uploads).
+      formData.append("files", file);
 
       setIsUploading(true);
 
