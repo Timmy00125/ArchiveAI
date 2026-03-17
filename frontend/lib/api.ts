@@ -14,7 +14,25 @@ export async function fetchApi<T>(
   });
 
   if (!response.ok) {
-    throw new Error(`API Error: ${response.statusText}`);
+    const errorText = await response.text();
+    let errorMessage = `API Error: ${response.status} ${response.statusText}`;
+
+    if (errorText) {
+      try {
+        const parsed = JSON.parse(errorText) as { detail?: unknown };
+        if (typeof parsed.detail === "string") {
+          errorMessage = parsed.detail;
+        } else if (Array.isArray(parsed.detail) && parsed.detail.length > 0) {
+          errorMessage = JSON.stringify(parsed.detail[0]);
+        } else {
+          errorMessage = errorText;
+        }
+      } catch {
+        errorMessage = errorText;
+      }
+    }
+
+    throw new Error(errorMessage);
   }
 
   return response.json();

@@ -11,8 +11,8 @@ import { Loader2 } from "lucide-react";
 interface ChatHistoryMessage {
   id?: string;
   role?: "user" | "assistant" | string;
-  content?: string;
-  text?: string;
+  content?: unknown;
+  text?: unknown;
   timestamp?: string;
 }
 
@@ -22,6 +22,17 @@ interface ChatHistoryResponse {
 
 function normalizeRole(role: ChatHistoryMessage["role"]): Message["role"] {
   return role === "assistant" ? "assistant" : "user";
+}
+
+function normalizeMessageContent(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value == null) return "";
+
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
 }
 
 export default function ChatSessionPage() {
@@ -41,7 +52,7 @@ export default function ChatSessionPage() {
           const formatted = data.messages.map((message, index) => ({
             id: message.id ?? `${sessionId}-${index}`,
             role: normalizeRole(message.role),
-            content: message.content ?? message.text ?? "",
+            content: normalizeMessageContent(message.content ?? message.text),
             timestamp: message.timestamp ?? new Date().toISOString(),
           }));
           setInitialMessages(formatted);

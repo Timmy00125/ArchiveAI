@@ -11,6 +11,10 @@ interface MessageBubbleProps {
 
 export function MessageBubble({ message }: MessageBubbleProps) {
   const isUser = message.role === "user";
+  const markdownContent =
+    typeof message.content === "string"
+      ? message.content
+      : JSON.stringify(message.content, null, 2);
 
   return (
     <div
@@ -48,7 +52,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
 
         <div className="text-sm prose dark:prose-invert prose-p:leading-relaxed prose-pre:p-0 max-w-none break-words">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>
-            {message.content}
+            {markdownContent}
           </ReactMarkdown>
         </div>
       </div>

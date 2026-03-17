@@ -14,6 +14,17 @@ interface ChatAreaProps {
   initialMessages?: Message[];
 }
 
+function normalizeMessageContent(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value == null) return "";
+
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
 export function ChatArea({
   sessionId: initialSessionId,
   initialMessages = [],
@@ -47,6 +58,7 @@ export function ChatArea({
     try {
       const response = await fetchApi<{
         session_id?: string;
+        response?: string;
         answer?: string;
         content?: string;
       }>("/chat/query", {
@@ -66,17 +78,21 @@ export function ChatArea({
       const assistantMsg: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content:
-          response.answer ||
-          response.content ||
-          "Sorry, I could not process that.",
+        content: normalizeMessageContent(
+          response.response ??
+            response.answer ??
+            response.content ??
+            "Sorry, I could not process that.",
+        ),
         timestamp: new Date().toISOString(),
       };
 
       setMessages((prev) => [...prev, assistantMsg]);
     } catch (error) {
       console.error(error);
-      toast.error("Failed to send message. Is the backend running?");
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      toast.error(`Failed to send message: ${errorMessage}`);
       // Optionally remove temp message or show error state
     } finally {
       setIsLoading(false);
