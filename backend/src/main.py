@@ -7,6 +7,7 @@ Run with:
 
 from __future__ import annotations
 
+import gc
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -28,6 +29,22 @@ from src.api import search as search_router
 
 setup_logging()
 logger = get_logger(__name__)
+
+
+def _cleanup_resource(resource, name: str):
+    """Best-effort shutdown for stateful resources."""
+    if resource is None:
+        return
+
+    for method_name in ("close", "shutdown", "stop"):
+        method = getattr(resource, method_name, None)
+        if callable(method):
+            try:
+                method()
+                logger.info(f"🧹 Closed {name} via `{method_name}()`")
+                return
+            except Exception as err:
+                logger.warning(f"⚠️ Failed to close {name} via `{method_name}()`: {err}")
 
 
 # ── Lifespan ──────────────────────────────────────────────────────────────────
@@ -66,6 +83,13 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("🛑 Shutting down…")
+    _cleanup_resource(getattr(app.state, "chat_service", None), "chat_service")
+    _cleanup_resource(getattr(app.state, "document_service", None), "document_service")
+    _cleanup_resource(getattr(app.state, "vs_manager", None), "vector_store")
+    _cleanup_resource(getattr(app.state, "processor", None), "document_processor")
+
+    # Encourage timely cleanup of multiprocessing resources from third-party libs.
+    gc.collect()
 
 
 # ── App ───────────────────────────────────────────────────────────────────────
@@ -108,20 +132,22 @@ app.include_router(search_router.router, prefix=PREFIX)
 @app.get("/", tags=["info"])
 async def root():
     """API info and available endpoints."""
-    return JSONResponse({
-        "name": "Document Intelligence API",
-        "version": "1.0.0",
-        "docs": "/docs",
-        "endpoints": {
-            "upload": f"{PREFIX}/upload",
-            "upload_context": f"{PREFIX}/upload/context",
-            "documents": f"{PREFIX}/documents",
-            "search": f"{PREFIX}/search",
-            "chat": f"{PREFIX}/chat/query",
-            "chat_history": f"{PREFIX}/chat/history/{{session_id}}",
-            "delete_session": f"{PREFIX}/chat/sessions/{{session_id}}",
-        },
-    })
+    return JSONResponse(
+        {
+            "name": "Document Intelligence API",
+            "version": "1.0.0",
+            "docs": "/docs",
+            "endpoints": {
+                "upload": f"{PREFIX}/upload",
+                "upload_context": f"{PREFIX}/upload/context",
+                "documents": f"{PREFIX}/documents",
+                "search": f"{PREFIX}/search",
+                "chat": f"{PREFIX}/chat/query",
+                "chat_history": f"{PREFIX}/chat/history/{{session_id}}",
+                "delete_session": f"{PREFIX}/chat/sessions/{{session_id}}",
+            },
+        }
+    )
 
 
 @app.get("/health", tags=["info"])
@@ -134,15 +160,17 @@ async def health():
         chunk_count = -1
         doc_count = -1
 
-    return JSONResponse({
-        "status": "ok",
-        "vector_store": {
-            "persist_dir": settings.CHROMA_PERSIST_DIR,
-            "total_chunks": chunk_count,
-            "total_documents": doc_count,
-        },
-        "models": {
-            "llm": settings.GEMINI_MODEL,
-            "embedding": settings.GEMINI_EMBED_MODEL,
-        },
-    })
+    return JSONResponse(
+        {
+            "status": "ok",
+            "vector_store": {
+                "persist_dir": settings.CHROMA_PERSIST_DIR,
+                "total_chunks": chunk_count,
+                "total_documents": doc_count,
+            },
+            "models": {
+                "llm": settings.GEMINI_MODEL,
+                "embedding": settings.GEMINI_EMBED_MODEL,
+            },
+        }
+    )
