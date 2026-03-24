@@ -15,7 +15,7 @@ class Settings:
 
     # ── Gemini ──────────────────────────────────────────────────────────────
     GOOGLE_API_KEY: str = os.environ.get("GOOGLE_API_KEY", "")
-    GEMINI_MODEL: str = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+    GEMINI_MODEL: str = os.environ.get("GEMINI_MODEL", "gemini-3-flash-preview")
     GEMINI_EMBED_MODEL: str = os.environ.get(
         "GEMINI_EMBED_MODEL", "gemini-embedding-001"
     )

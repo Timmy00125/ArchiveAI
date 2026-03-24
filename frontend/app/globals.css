@@ -117,6 +117,12 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+@layer utilities {
+  .drop-shadow-glow {
+    filter: drop-shadow(0 0 8px oklch(var(--primary) / 0.4));
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

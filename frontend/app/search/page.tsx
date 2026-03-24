@@ -1,27 +1,37 @@
+"use client";
+
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { SearchUI } from "@/components/search/search-ui";
+import { Search } from "lucide-react";
+import { motion } from "framer-motion";
 
 export default function SearchPage() {
   return (
     <>
-      <header className="flex h-14 items-center gap-4 border-b bg-background px-4 lg:px-6 shrink-0">
+      <header className="flex h-16 items-center gap-4 border-b border-border/40 bg-background/50 backdrop-blur-md px-6 shrink-0 z-10">
         <SidebarTrigger />
-        <div className="font-semibold">Semantic Search</div>
+        <div className="h-4 w-px bg-border/60 mx-1 hidden sm:block" />
+        <div className="flex items-center gap-2">
+          <Search size={18} className="text-amber-500" />
+          <h1 className="font-bold tracking-tight text-sm sm:text-base">Semantic Search</h1>
+        </div>
       </header>
-      <div className="flex-1 overflow-auto p-4 md:p-8">
-        <div className="max-w-3xl mx-auto">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold tracking-tight mb-2">
-              Search Knowledge Base
-            </h1>
-            <p className="text-muted-foreground">
-              Perform direct semantic searches to find specific phrases or
-              paragraphs in your uploaded documents.
+      
+      <div className="flex-1 overflow-auto bg-muted/20">
+        <motion.div 
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="max-w-4xl mx-auto p-6 lg:p-12"
+        >
+          <div className="mb-10 space-y-2">
+            <h2 className="text-3xl font-bold tracking-tight">Direct Retrieval</h2>
+            <p className="text-muted-foreground text-lg leading-relaxed">
+              Search across all indexed documents to find precise segments using vector embeddings.
             </p>
           </div>
 
           <SearchUI />
-        </div>
+        </motion.div>
       </div>
     </>
   );
