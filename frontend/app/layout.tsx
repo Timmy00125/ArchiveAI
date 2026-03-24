@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Docling AI",
+  title: "ArchiveAI",
   description: "Document Intelligence with FastAPI and Next.js",
 };
 
