@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { BrainCircuit, Sparkles, MessageSquare } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useRouter } from "next/navigation";
 
 interface ChatAreaProps {
   sessionId?: string;
@@ -30,6 +31,7 @@ export function ChatArea({
   sessionId: initialSessionId,
   initialMessages = [],
 }: ChatAreaProps) {
+  const router = useRouter();
   const [sessionId, setSessionId] = useState<string | undefined>(
     initialSessionId,
   );
@@ -76,10 +78,7 @@ export function ChatArea({
         }),
       });
 
-      // After successful query, we should update session id if it was newly created
-      if (response.session_id && !sessionId) {
-        setSessionId(response.session_id);
-      }
+      const nextSessionId = response.session_id ?? sessionId;
 
       const assistantMsg: Message = {
         id: (Date.now() + 1).toString(),
@@ -94,6 +93,14 @@ export function ChatArea({
       };
 
       setMessages((prev) => [...prev, assistantMsg]);
+
+      // Transition to a stable URL after the UI already reflects the reply.
+      if (response.session_id && !sessionId) {
+        setSessionId(response.session_id);
+        router.replace(`/chat/${response.session_id}`);
+      } else if (nextSessionId) {
+        setSessionId(nextSessionId);
+      }
     } catch (error) {
       console.error(error);
       const errorMessage =

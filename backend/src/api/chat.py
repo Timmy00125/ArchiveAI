@@ -5,6 +5,7 @@ Chat API router — query, history, session management.
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from typing import Optional, AsyncGenerator
 
@@ -51,6 +52,50 @@ async def _sse_stream(generator: AsyncGenerator[str, None], session_id: str):
         yield "data: [DONE]\n\n"
 
 
+def _extract_retry_after_seconds(message: str) -> int | None:
+    """Extract retry delay seconds from provider error strings."""
+    match = re.search(r"retry in\s+([0-9]+(?:\.[0-9]+)?)s", message, re.IGNORECASE)
+    if not match:
+        return None
+
+    try:
+        seconds = float(match.group(1))
+    except ValueError:
+        return None
+
+    return max(1, int(seconds))
+
+
+def _is_upstream_quota_error(message: str) -> bool:
+    """Detect Gemini/LLM quota exhaustion or upstream rate-limit failures."""
+    normalized = message.lower()
+    return (
+        "resource_exhausted" in normalized
+        or "quota exceeded" in normalized
+        or "rate limit" in normalized
+        or "429" in normalized
+    )
+
+
+def _raise_chat_provider_http_error(exc: Exception) -> None:
+    """Map upstream LLM exceptions to API-friendly HTTP errors."""
+    error_message = str(exc)
+
+    if _is_upstream_quota_error(error_message):
+        retry_after = _extract_retry_after_seconds(error_message)
+        detail = "AI provider quota exceeded. Please retry shortly"
+        if retry_after:
+            detail = f"{detail} (about {retry_after}s)."
+        else:
+            detail = f"{detail}."
+        raise HTTPException(status_code=429, detail=detail)
+
+    raise HTTPException(
+        status_code=502,
+        detail="AI provider error while generating response. Please try again.",
+    )
+
+
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 
@@ -69,28 +114,38 @@ async def chat_query(
 
     session_id = body.session_id or str(uuid.uuid4())
 
-    if body.stream:
-        generator = await chat_service.chat(
+    try:
+        if body.stream:
+            generator = await chat_service.chat(
+                prompt=body.prompt,
+                session_id=session_id,
+                stream=True,
+            )
+            return StreamingResponse(
+                _sse_stream(generator, session_id),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Session-ID": session_id,
+                },
+            )
+
+        result = await chat_service.chat(
             prompt=body.prompt,
             session_id=session_id,
-            stream=True,
+            stream=False,
         )
-        return StreamingResponse(
-            _sse_stream(generator, session_id),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Session-ID": session_id,
-            },
+        return JSONResponse(result)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(
+            "Chat provider request failed for session '%s': %s",
+            session_id,
+            exc,
         )
-
-    result = await chat_service.chat(
-        prompt=body.prompt,
-        session_id=session_id,
-        stream=False,
-    )
-    return JSONResponse(result)
+        _raise_chat_provider_http_error(exc)
 
 
 @router.get("/history/{session_id}")
@@ -101,6 +156,15 @@ async def get_chat_history(
     """Get conversation history for a session."""
     history = chat_service.get_history(session_id)
     return JSONResponse(history)
+
+
+@router.get("/sessions")
+async def list_sessions(
+    chat_service=Depends(get_chat_service),
+):
+    """List all chat sessions."""
+    sessions = chat_service.list_sessions()
+    return JSONResponse({"sessions": sessions})
 
 
 @router.delete("/sessions/{session_id}")

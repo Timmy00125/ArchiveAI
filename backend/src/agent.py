@@ -11,6 +11,7 @@ from langchain_core.messages import HumanMessage, BaseMessage
 from langchain_core.tools import BaseTool
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.prebuilt import create_react_agent
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import MemorySaver
 
 from src.config import settings
@@ -42,7 +43,7 @@ When answering:
 def create_documentation_agent(
     tools: List[BaseTool],
     model_name: str | None = None,
-    memory: MemorySaver | None = None,
+    memory: BaseCheckpointSaver | None = None,
 ):
     """
     Create a document intelligence assistant agent using LangGraph.
@@ -50,7 +51,7 @@ def create_documentation_agent(
     Args:
         tools:       List of tools the agent can use
         model_name:  Gemini model name (defaults to settings.GEMINI_MODEL)
-        memory:      MemorySaver instance (shared across sessions via thread_id)
+        memory:      Checkpoint saver instance (shared across sessions via thread_id)
 
     Returns:
         Compiled LangGraph agent
@@ -133,9 +134,29 @@ async def invoke_agent(
         raise
 
 
-def get_conversation_history(memory: MemorySaver, thread_id: str) -> List[dict]:
+def _extract_checkpoint_dict(state: object) -> dict:
+    """Normalize saver return shapes into a checkpoint dictionary."""
+    if state is None:
+        return {}
+
+    if isinstance(state, dict):
+        if "channel_values" in state:
+            return state
+        checkpoint = state.get("checkpoint")
+        if isinstance(checkpoint, dict):
+            return checkpoint
+        return state
+
+    checkpoint = getattr(state, "checkpoint", None)
+    if isinstance(checkpoint, dict):
+        return checkpoint
+
+    return {}
+
+
+def get_conversation_history(memory: BaseCheckpointSaver, thread_id: str) -> List[dict]:
     """
-    Extract conversation messages from MemorySaver for a given thread.
+    Extract conversation messages from checkpointer for a given thread.
 
     Returns a list of {"role": "user"|"assistant", "content": str} dicts.
     """
@@ -145,8 +166,15 @@ def get_conversation_history(memory: MemorySaver, thread_id: str) -> List[dict]:
         if not state:
             return []
 
+        checkpoint = _extract_checkpoint_dict(state)
+        channel_values = checkpoint.get("channel_values", {})
+        messages = channel_values.get("messages")
+
+        if not isinstance(messages, list):
+            messages = checkpoint.get("messages", [])
+
         history = []
-        for msg in state.get("messages", []):
+        for msg in messages:
             if hasattr(msg, "type") and hasattr(msg, "content"):
                 role_map = {"human": "user", "ai": "assistant"}
                 role = role_map.get(msg.type)

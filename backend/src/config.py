@@ -33,6 +33,18 @@ class Settings:
     MAX_UPLOAD_SIZE_MB: int = int(os.environ.get("MAX_UPLOAD_SIZE_MB", "50"))
     ALLOWED_EXTENSIONS: set = {".pdf", ".docx", ".pptx", ".html", ".htm", ".txt", ".md"}
 
+    # ── Database (PostgreSQL) ────────────────────────────────────────────────
+    POSTGRES_USER: str = os.environ.get("POSTGRES_USER", "archiveai")
+    POSTGRES_PASSWORD: str = os.environ.get("POSTGRES_PASSWORD", "archiveai_password")
+    POSTGRES_DB: str = os.environ.get("POSTGRES_DB", "archiveai_chat")
+    POSTGRES_HOST: str = os.environ.get("POSTGRES_HOST", "localhost")
+    POSTGRES_PORT: str = os.environ.get("POSTGRES_PORT", "5432")
+
+    @property
+    def POSTGRES_URI(self) -> str:
+        """Construct PostgreSQL connection URI."""
+        return f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+
     # ── Server / CORS ─────────────────────────────────────────────────────────
     CORS_ORIGINS: list = os.environ.get(
         "CORS_ORIGINS", "http://localhost:3000,http://localhost:5173,http://localhost:8080"
