@@ -67,20 +67,42 @@ async def lifespan(app: FastAPI):
     pool = None
     checkpointer = None
     try:
-        pool = ConnectionPool(conninfo=settings.POSTGRES_URI, max_size=10, open=True)
-        checkpointer = PostgresSaver(pool)
-        # Setup tables if they don't exist
-        checkpointer.setup()
-        logger.info("✅ PostgreSQL chat history storage initialized")
+        pool = ConnectionPool(
+            conninfo=settings.POSTGRES_URI,
+            max_size=10,
+            open=True,
+            kwargs={"autocommit": True},
+        )
+        try:
+            checkpointer = PostgresSaver(pool)
+            # Setup checkpoint tables if they don't exist.
+            checkpointer.setup()
+            logger.info("✅ PostgreSQL chat history storage initialized")
+        except Exception as err:
+            logger.warning(
+                "⚠️ PostgreSQL connected, but checkpointer setup failed: %s. "
+                "Continuing with MemorySaver checkpoints.",
+                err,
+            )
+            checkpointer = None
     except Exception as e:
-        logger.warning(f"⚠️ Could not connect to PostgreSQL: {e}. Falling back to MemorySaver.")
+        logger.warning(
+            "⚠️ Could not connect to PostgreSQL: %s. "
+            "Falling back to MemorySaver.",
+            e,
+        )
+        pool = None
         checkpointer = None
 
     # Shared components — created once and stored on app.state
     processor = DocumentProcessor()
     vs_manager = VectorStoreManager()
     document_service = DocumentService(vs_manager=vs_manager, processor=processor)
-    chat_service = ChatService(vs_manager=vs_manager, memory=checkpointer)
+    chat_service = ChatService(
+        vs_manager=vs_manager,
+        memory=checkpointer,
+        db_pool=pool,
+    )
 
     app.state.processor = processor
     app.state.vs_manager = vs_manager

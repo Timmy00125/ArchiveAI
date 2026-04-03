@@ -66,9 +66,9 @@ export function ChatArea({
     try {
       const response = await fetchApi<{
         session_id?: string;
-        response?: string;
-        answer?: string;
-        content?: string;
+        response?: unknown;
+        answer?: unknown;
+        content?: unknown;
       }>("/chat/query", {
         method: "POST",
         body: JSON.stringify({

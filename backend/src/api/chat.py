@@ -79,7 +79,7 @@ def _is_upstream_quota_error(message: str) -> bool:
 
 def _raise_chat_provider_http_error(exc: Exception) -> None:
     """Map upstream LLM exceptions to API-friendly HTTP errors."""
-    error_message = str(exc)
+    error_message = str(exc).strip() or exc.__class__.__name__
 
     if _is_upstream_quota_error(error_message):
         retry_after = _extract_retry_after_seconds(error_message)
@@ -90,9 +90,15 @@ def _raise_chat_provider_http_error(exc: Exception) -> None:
             detail = f"{detail}."
         raise HTTPException(status_code=429, detail=detail)
 
+    if "api key" in error_message.lower() or "google_api_key" in error_message.lower():
+        raise HTTPException(
+            status_code=503,
+            detail="AI provider is not configured correctly (API key issue).",
+        )
+
     raise HTTPException(
         status_code=502,
-        detail="AI provider error while generating response. Please try again.",
+        detail=f"AI provider error: {error_message}",
     )
 
 
@@ -140,7 +146,7 @@ async def chat_query(
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error(
+        logger.exception(
             "Chat provider request failed for session '%s': %s",
             session_id,
             exc,
