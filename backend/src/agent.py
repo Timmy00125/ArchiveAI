@@ -5,12 +5,13 @@ LangGraph agent configuration — Gemini-powered, async streaming, multi-session
 from __future__ import annotations
 
 import asyncio
-from typing import AsyncGenerator, List
+from typing import AsyncGenerator, List, Any, Dict
 
 from langchain_core.messages import HumanMessage, BaseMessage
 from langchain_core.tools import BaseTool
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.prebuilt import create_react_agent
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import MemorySaver
 
 from src.config import settings
@@ -42,7 +43,7 @@ When answering:
 def create_documentation_agent(
     tools: List[BaseTool],
     model_name: str | None = None,
-    memory: MemorySaver | None = None,
+    memory: BaseCheckpointSaver | None = None,
 ):
     """
     Create a document intelligence assistant agent using LangGraph.
@@ -50,13 +51,20 @@ def create_documentation_agent(
     Args:
         tools:       List of tools the agent can use
         model_name:  Gemini model name (defaults to settings.GEMINI_MODEL)
-        memory:      MemorySaver instance (shared across sessions via thread_id)
+        memory:      Checkpoint saver instance (shared across sessions via thread_id)
 
     Returns:
         Compiled LangGraph agent
     """
     model_name = model_name or settings.GEMINI_MODEL
-    llm = ChatGoogleGenerativeAI(model=model_name, temperature=0)
+    if not settings.GOOGLE_API_KEY:
+        raise ValueError("GOOGLE_API_KEY is not configured")
+
+    llm = ChatGoogleGenerativeAI(
+        model=model_name,
+        temperature=0,
+        google_api_key=settings.GOOGLE_API_KEY,
+    )
     memory = memory or MemorySaver()
 
     agent = create_react_agent(
@@ -97,15 +105,16 @@ async def astream_agent_response(
             if "agent" in node.lower() and hasattr(msg, "content") and msg.content:
                 yield msg.content
     except Exception as e:
-        logger.error(f"Agent streaming error (thread={thread_id}): {e}")
-        yield f"\n\n⚠️ Error generating response: {e}"
+        logger.exception("Agent streaming error (thread=%s)", thread_id)
+        message = str(e).strip() or e.__class__.__name__
+        yield f"\n\n⚠️ Error generating response: {message}"
 
 
 async def invoke_agent(
     agent,
     prompt: str,
     thread_id: str,
-) -> str:
+) -> Any:
     """
     Invoke the agent and return the complete response as a string.
 
@@ -121,21 +130,55 @@ async def invoke_agent(
     messages = [HumanMessage(content=prompt)]
 
     try:
-        result = await agent.ainvoke({"messages": messages}, config=config)
-        # The last message in the output is the assistant reply
+        try:
+            result: Dict[str, Any] = await agent.ainvoke(
+                {"messages": messages},
+                config=config,
+            )
+        except NotImplementedError:
+            # Some checkpoint savers implement sync APIs only (get_tuple/put_tuple).
+            # Fallback keeps chat functional while preserving checkpoint support.
+            result = await asyncio.to_thread(
+                agent.invoke,
+                {"messages": messages},
+                config,
+            )
+
+        # The last message in the output is the assistant reply.
         output_messages: List[BaseMessage] = result.get("messages", [])
         for msg in reversed(output_messages):
             if hasattr(msg, "content") and msg.content and msg.type == "ai":
                 return msg.content
         return ""
     except Exception as e:
-        logger.error(f"Agent invoke error (thread={thread_id}): {e}")
-        raise
+        logger.exception("Agent invoke error (thread=%s)", thread_id)
+        detail = str(e).strip() or e.__class__.__name__
+        raise RuntimeError(detail) from e
 
 
-def get_conversation_history(memory: MemorySaver, thread_id: str) -> List[dict]:
+def _extract_checkpoint_dict(state: object) -> dict:
+    """Normalize saver return shapes into a checkpoint dictionary."""
+    if state is None:
+        return {}
+
+    if isinstance(state, dict):
+        if "channel_values" in state:
+            return state
+        checkpoint = state.get("checkpoint")
+        if isinstance(checkpoint, dict):
+            return checkpoint
+        return state
+
+    checkpoint = getattr(state, "checkpoint", None)
+    if isinstance(checkpoint, dict):
+        return checkpoint
+
+    return {}
+
+
+def get_conversation_history(memory: BaseCheckpointSaver, thread_id: str) -> List[dict]:
     """
-    Extract conversation messages from MemorySaver for a given thread.
+    Extract conversation messages from checkpointer for a given thread.
 
     Returns a list of {"role": "user"|"assistant", "content": str} dicts.
     """
@@ -145,13 +188,29 @@ def get_conversation_history(memory: MemorySaver, thread_id: str) -> List[dict]:
         if not state:
             return []
 
+        checkpoint = _extract_checkpoint_dict(state)
+        channel_values = checkpoint.get("channel_values", {})
+        messages = channel_values.get("messages")
+
+        if not isinstance(messages, list):
+            messages = checkpoint.get("messages", [])
+
         history = []
-        for msg in state.get("messages", []):
+        for msg in messages:
             if hasattr(msg, "type") and hasattr(msg, "content"):
                 role_map = {"human": "user", "ai": "assistant"}
                 role = role_map.get(msg.type)
                 if role and msg.content:
                     history.append({"role": role, "content": msg.content})
+                continue
+
+            if isinstance(msg, dict):
+                role_map = {"human": "user", "ai": "assistant", "user": "user", "assistant": "assistant"}
+                role_raw = msg.get("type") or msg.get("role")
+                role = role_map.get(role_raw)
+                content = msg.get("content")
+                if role and content:
+                    history.append({"role": role, "content": content})
         return history
     except Exception as e:
         logger.warning(f"Could not read history for thread '{thread_id}': {e}")

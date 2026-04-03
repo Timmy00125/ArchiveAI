@@ -15,7 +15,7 @@ class Settings:
 
     # ── Gemini ──────────────────────────────────────────────────────────────
     GOOGLE_API_KEY: str = os.environ.get("GOOGLE_API_KEY", "")
-    GEMINI_MODEL: str = os.environ.get("GEMINI_MODEL", "gemini-3-flash-preview")
+    GEMINI_MODEL: str = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
     GEMINI_EMBED_MODEL: str = os.environ.get(
         "GEMINI_EMBED_MODEL", "gemini-embedding-001"
     )
@@ -32,6 +32,18 @@ class Settings:
     # ── Upload ───────────────────────────────────────────────────────────────
     MAX_UPLOAD_SIZE_MB: int = int(os.environ.get("MAX_UPLOAD_SIZE_MB", "50"))
     ALLOWED_EXTENSIONS: set = {".pdf", ".docx", ".pptx", ".html", ".htm", ".txt", ".md"}
+
+    # ── Database (PostgreSQL) ────────────────────────────────────────────────
+    POSTGRES_USER: str = os.environ.get("POSTGRES_USER", "archiveai")
+    POSTGRES_PASSWORD: str = os.environ.get("POSTGRES_PASSWORD", "archiveai_password")
+    POSTGRES_DB: str = os.environ.get("POSTGRES_DB", "archiveai_chat")
+    POSTGRES_HOST: str = os.environ.get("POSTGRES_HOST", "localhost")
+    POSTGRES_PORT: str = os.environ.get("POSTGRES_PORT", "5433")
+
+    @property
+    def POSTGRES_URI(self) -> str:
+        """Construct PostgreSQL connection URI."""
+        return f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
 
     # ── Server / CORS ─────────────────────────────────────────────────────────
     CORS_ORIGINS: list = os.environ.get(

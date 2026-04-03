@@ -12,6 +12,12 @@ export interface ChatSession {
   updated_at: string;
 }
 
+export interface ChatSessionSummary {
+  session_id: string;
+  last_message: string;
+  timestamp: string;
+}
+
 export interface Document {
   id: string;
   filename: string;
