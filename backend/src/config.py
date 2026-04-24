@@ -16,6 +16,7 @@ class Settings:
     # ── Gemini ──────────────────────────────────────────────────────────────
     GOOGLE_API_KEY: str = os.environ.get("GOOGLE_API_KEY", "")
     GEMINI_MODEL: str = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+    GEMINI_VISION_MODEL: str = os.environ.get("GEMINI_VISION_MODEL", "gemini-2.5-flash")
     GEMINI_EMBED_MODEL: str = os.environ.get(
         "GEMINI_EMBED_MODEL", "gemini-embedding-001"
     )
@@ -32,6 +33,8 @@ class Settings:
     # ── Upload ───────────────────────────────────────────────────────────────
     MAX_UPLOAD_SIZE_MB: int = int(os.environ.get("MAX_UPLOAD_SIZE_MB", "50"))
     ALLOWED_EXTENSIONS: set = {".pdf", ".docx", ".pptx", ".html", ".htm", ".txt", ".md"}
+    UPLOAD_DIR: str = os.environ.get("UPLOAD_DIR", "./data/uploads")
+    MARKDOWN_DIR: str = os.environ.get("MARKDOWN_DIR", "./data/markdown")
 
     # ── Database (PostgreSQL) ────────────────────────────────────────────────
     POSTGRES_USER: str = os.environ.get("POSTGRES_USER", "archiveai")

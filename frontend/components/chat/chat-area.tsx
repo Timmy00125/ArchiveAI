@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Message } from "@/lib/types";
 import { MessageBubble } from "./message-bubble";
 import { ChatInput } from "./chat-input";
@@ -14,6 +14,7 @@ import { useRouter } from "next/navigation";
 interface ChatAreaProps {
   sessionId?: string;
   initialMessages?: Message[];
+  initialQuery?: string;
 }
 
 function normalizeMessageContent(value: unknown): string {
@@ -30,6 +31,7 @@ function normalizeMessageContent(value: unknown): string {
 export function ChatArea({
   sessionId: initialSessionId,
   initialMessages = [],
+  initialQuery,
 }: ChatAreaProps) {
   const router = useRouter();
   const [sessionId, setSessionId] = useState<string | undefined>(
@@ -38,6 +40,7 @@ export function ChatArea({
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [isLoading, setIsLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const querySentRef = useRef(false);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -51,7 +54,7 @@ export function ChatArea({
     }
   }, [messages, isLoading]);
 
-  const handleSendMessage = async (content: string) => {
+  const handleSendMessage = useCallback(async (content: string) => {
     // Optimistic UI update
     const tempUserMsg: Message = {
       id: Date.now().toString(),
@@ -109,7 +112,15 @@ export function ChatArea({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [sessionId, router]);
+
+  // Auto-send initial query from document quick actions
+  useEffect(() => {
+    if (initialQuery && !querySentRef.current && messages.length === 0) {
+      querySentRef.current = true;
+      handleSendMessage(initialQuery);
+    }
+  }, [initialQuery, handleSendMessage, messages.length]);
 
   return (
     <div className="flex flex-col h-full bg-background max-w-5xl mx-auto w-full border-x border-border/40 shadow-2xl relative">
@@ -158,21 +169,34 @@ export function ChatArea({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-lg mt-4">
                 {[
-                  "Summarize my latest document",
-                  "Extract key findings from the report",
-                  "Compare these two research papers",
-                  "Explain the methodology used",
+                  {
+                    text: "Summarize my latest document",
+                    icon: "✨",
+                  },
+                  {
+                    text: "Extract key findings from the report",
+                    icon: "🔍",
+                  },
+                  {
+                    text: "Analyze charts and diagrams",
+                    icon: "📊",
+                  },
+                  {
+                    text: "Compare these two research papers",
+                    icon: "⚖️",
+                  },
                 ].map((suggestion, i) => (
                   <motion.button
-                    key={suggestion}
+                    key={suggestion.text}
                     initial={{ opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.1 * i }}
-                    onClick={() => handleSendMessage(suggestion)}
+                    onClick={() => handleSendMessage(suggestion.text)}
                     className="p-3 text-sm text-left rounded-xl border border-border/50 bg-muted/30 hover:bg-primary/5 hover:border-primary/30 transition-all group"
                   >
-                    <span className="text-muted-foreground group-hover:text-primary transition-colors">
-                      {suggestion}
+                    <span className="text-muted-foreground group-hover:text-primary transition-colors flex items-center gap-2">
+                      <span>{suggestion.icon}</span>
+                      {suggestion.text}
                     </span>
                   </motion.button>
                 ))}
