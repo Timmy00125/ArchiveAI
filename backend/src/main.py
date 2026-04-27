@@ -13,7 +13,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from langgraph.checkpoint.postgres import PostgresSaver
 from psycopg_pool import ConnectionPool
 
 from src.config import settings
@@ -63,9 +62,8 @@ async def lifespan(app: FastAPI):
             "Set it in your .env file or environment before making LLM calls."
         )
 
-    # Database and Checkpointer setup
+    # Database setup
     pool = None
-    checkpointer = None
     try:
         pool = ConnectionPool(
             conninfo=settings.POSTGRES_URI,
@@ -73,26 +71,14 @@ async def lifespan(app: FastAPI):
             open=True,
             kwargs={"autocommit": True},
         )
-        try:
-            checkpointer = PostgresSaver(pool)
-            # Setup checkpoint tables if they don't exist.
-            checkpointer.setup()
-            logger.info("✅ PostgreSQL chat history storage initialized")
-        except Exception as err:
-            logger.warning(
-                "⚠️ PostgreSQL connected, but checkpointer setup failed: %s. "
-                "Continuing with MemorySaver checkpoints.",
-                err,
-            )
-            checkpointer = None
+        logger.info("✅ PostgreSQL chat history storage initialized")
     except Exception as e:
         logger.warning(
             "⚠️ Could not connect to PostgreSQL: %s. "
-            "Falling back to MemorySaver.",
+            "Continuing without database.",
             e,
         )
         pool = None
-        checkpointer = None
 
     # Shared components — created once and stored on app.state
     processor = DocumentProcessor()
@@ -100,7 +86,6 @@ async def lifespan(app: FastAPI):
     document_service = DocumentService(vs_manager=vs_manager, processor=processor)
     chat_service = ChatService(
         vs_manager=vs_manager,
-        memory=checkpointer,
         db_pool=pool,
     )
 

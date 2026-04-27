@@ -8,7 +8,6 @@ import json
 import uuid
 from typing import Any, AsyncGenerator, Dict, List
 
-from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import MemorySaver
 from psycopg_pool import ConnectionPool
 
@@ -30,17 +29,15 @@ class ChatService:
     Manages the LangGraph agent and per-session conversation state.
 
     One ChatService instance is shared for the app lifetime.
-    Thread isolation is handled by the checkpointer keyed on thread_id (session_id).
     """
 
     def __init__(
         self,
         vs_manager: VectorStoreManager,
-        memory: BaseCheckpointSaver | None = None,
         db_pool: ConnectionPool | None = None,
     ):
         self.vs_manager = vs_manager
-        self._memory: BaseCheckpointSaver = memory or MemorySaver()
+        self._memory = MemorySaver()  # Used for session listing/history, not agent checkpointer
         self._db_pool = db_pool
         self._agent = None
         self._setup_persistence_tables()
@@ -258,11 +255,9 @@ class ChatService:
         search_tool = create_search_tool(self.vs_manager)
         summarize_tool = create_summarize_tool()
         vision_tool = create_vision_tool()
-        self._agent, memory = create_documentation_agent(
+        self._agent = create_documentation_agent(
             tools=[search_tool, summarize_tool, vision_tool],
-            memory=self._memory,
         )
-        self._memory = memory or MemorySaver()
 
     # ── Public API ─────────────────────────────────────────────────────────────
 

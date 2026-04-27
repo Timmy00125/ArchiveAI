@@ -4,15 +4,12 @@ LangGraph agent configuration — Gemini-powered, async streaming, multi-session
 
 from __future__ import annotations
 
-import asyncio
-from typing import AsyncGenerator, List, Any, Dict
+from typing import Any, AsyncGenerator, Dict, List
 
-from langchain_core.messages import HumanMessage, BaseMessage
+from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_core.tools import BaseTool
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.prebuilt import create_react_agent
-from langgraph.checkpoint.base import BaseCheckpointSaver
-from langgraph.checkpoint.memory import MemorySaver
 
 from src.config import settings
 from src.logging_config import get_logger
@@ -45,7 +42,6 @@ When answering:
 def create_documentation_agent(
     tools: List[BaseTool],
     model_name: str | None = None,
-    memory: BaseCheckpointSaver | None = None,
 ):
     """
     Create a document intelligence assistant agent using LangGraph.
@@ -53,7 +49,6 @@ def create_documentation_agent(
     Args:
         tools:       List of tools the agent can use
         model_name:  Gemini model name (defaults to settings.GEMINI_MODEL)
-        memory:      Checkpoint saver instance (shared across sessions via thread_id)
 
     Returns:
         Compiled LangGraph agent
@@ -67,12 +62,11 @@ def create_documentation_agent(
         temperature=0,
         google_api_key=settings.GOOGLE_API_KEY,
     )
-    memory = memory or MemorySaver()
 
     agent = create_react_agent(
-        llm, tools=tools, prompt=SYSTEM_PROMPT, checkpointer=memory
+        llm, tools=tools, prompt=SYSTEM_PROMPT
     )
-    return agent, memory
+    return agent
 
 
 async def astream_agent_response(
@@ -132,19 +126,10 @@ async def invoke_agent(
     messages = [HumanMessage(content=prompt)]
 
     try:
-        try:
-            result: Dict[str, Any] = await agent.ainvoke(
-                {"messages": messages},
-                config=config,
-            )
-        except NotImplementedError:
-            # Some checkpoint savers implement sync APIs only (get_tuple/put_tuple).
-            # Fallback keeps chat functional while preserving checkpoint support.
-            result = await asyncio.to_thread(
-                agent.invoke,
-                {"messages": messages},
-                config,
-            )
+        result: Dict[str, Any] = await agent.ainvoke(
+            {"messages": messages},
+            config=config,
+        )
 
         # The last message in the output is the assistant reply.
         output_messages: List[BaseMessage] = result.get("messages", [])
@@ -207,7 +192,12 @@ def get_conversation_history(memory: BaseCheckpointSaver, thread_id: str) -> Lis
                 continue
 
             if isinstance(msg, dict):
-                role_map = {"human": "user", "ai": "assistant", "user": "user", "assistant": "assistant"}
+                role_map = {
+                    "human": "user",
+                    "ai": "assistant",
+                    "user": "user",
+                    "assistant": "assistant",
+                }
                 role_raw = msg.get("type") or msg.get("role")
                 role = role_map.get(role_raw)
                 content = msg.get("content")
