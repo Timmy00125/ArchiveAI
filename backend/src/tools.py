@@ -2,15 +2,15 @@
 Agent tools for document search, summarization, and vision analysis.
 """
 
-import os
 import base64
 import mimetypes
+import os
 from pathlib import Path
 from typing import Annotated
 
-from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.tools import tool
+from langchain_google_vertexai import ChatVertexAI
 
 from src.config import settings
 from src.logging_config import get_logger
@@ -43,10 +43,7 @@ def create_search_tool(vectorstore_manager):
                 )
                 content = doc.page_content.strip()
 
-                context_parts.append(
-                    f"[Source {i}: {source}]\n"
-                    f"Content: {content}\n"
-                )
+                context_parts.append(f"[Source {i}: {source}]\nContent: {content}\n")
 
             return "\n---\n".join(context_parts)
 
@@ -77,10 +74,11 @@ def create_summarize_tool():
             with open(markdown_path, "r", encoding="utf-8") as f:
                 content = f.read()
 
-            llm = ChatGoogleGenerativeAI(
-                model=settings.GEMINI_MODEL,
+            llm = ChatVertexAI(
+                model_name=settings.GEMINI_MODEL,
                 temperature=0,
-                google_api_key=settings.GOOGLE_API_KEY,
+                project=settings.GOOGLE_CLOUD_PROJECT,
+                location=settings.GOOGLE_CLOUD_LOCATION,
             )
 
             prompt = (
@@ -105,7 +103,9 @@ def create_vision_tool():
     @tool
     async def analyze_image_document(
         filename: Annotated[str, "The exact filename of the document to analyze"],
-        query: Annotated[str, "The specific question about the document's visual content or layout"],
+        query: Annotated[
+            str, "The specific question about the document's visual content or layout"
+        ],
     ) -> str:
         """
         Analyze the original raw document (image or PDF) using a vision model.
@@ -135,15 +135,19 @@ def create_vision_tool():
 
             file_data = base64.b64encode(file_bytes).decode("utf-8")
 
-            llm = ChatGoogleGenerativeAI(
-                model=settings.GEMINI_VISION_MODEL,
+            llm = ChatVertexAI(
+                model_name=settings.GEMINI_VISION_MODEL,
                 temperature=0,
-                google_api_key=settings.GOOGLE_API_KEY,
+                project=settings.GOOGLE_CLOUD_PROJECT,
+                location=settings.GOOGLE_CLOUD_LOCATION,
             )
 
             message = HumanMessage(
                 content=[
-                    {"type": "text", "text": f"Context: The user is asking about the file '{safe_filename}'.\nQuery: {query}"},
+                    {
+                        "type": "text",
+                        "text": f"Context: The user is asking about the file '{safe_filename}'.\nQuery: {query}",
+                    },
                     {
                         "type": "image_url",
                         "image_url": {"url": f"data:{mime_type};base64,{file_data}"},

@@ -15,18 +15,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from psycopg_pool import ConnectionPool
 
-from src.config import settings
-from src.logging_config import setup_logging, get_logger
-from src.document_processor import DocumentProcessor
-from src.vectorstore import VectorStoreManager
-from src.services.document_service import DocumentService
-from src.services.chat_service import ChatService
-
 # Import routers
 from src.api import chat as chat_router
 from src.api import documents as documents_router
-from src.api import upload as upload_router
 from src.api import search as search_router
+from src.api import upload as upload_router
+from src.config import settings
+from src.document_processor import DocumentProcessor
+from src.logging_config import get_logger, setup_logging
+from src.services.chat_service import ChatService
+from src.services.document_service import DocumentService
+from src.vectorstore import VectorStoreManager
 
 setup_logging()
 logger = get_logger(__name__)
@@ -56,9 +55,9 @@ async def lifespan(app: FastAPI):
     """Initialise shared resources at startup, clean up on shutdown."""
     logger.info("🚀 Starting Document Intelligence API…")
 
-    if not settings.GOOGLE_API_KEY:
+    if not settings.GOOGLE_CLOUD_PROJECT:
         logger.warning(
-            "⚠️  GOOGLE_API_KEY is not set. "
+            "⚠️  GOOGLE_CLOUD_PROJECT is not set. "
             "Set it in your .env file or environment before making LLM calls."
         )
 
@@ -74,8 +73,7 @@ async def lifespan(app: FastAPI):
         logger.info("✅ PostgreSQL chat history storage initialized")
     except Exception as e:
         logger.warning(
-            "⚠️ Could not connect to PostgreSQL: %s. "
-            "Continuing without database.",
+            "⚠️ Could not connect to PostgreSQL: %s. Continuing without database.",
             e,
         )
         pool = None

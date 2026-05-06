@@ -8,7 +8,7 @@ from typing import Any, AsyncGenerator, Dict, List
 
 from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_core.tools import BaseTool
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_google_vertexai import ChatVertexAI
 from langgraph.prebuilt import create_react_agent
 
 from src.config import settings
@@ -54,18 +54,17 @@ def create_documentation_agent(
         Compiled LangGraph agent
     """
     model_name = model_name or settings.GEMINI_MODEL
-    if not settings.GOOGLE_API_KEY:
-        raise ValueError("GOOGLE_API_KEY is not configured")
+    if not settings.GOOGLE_CLOUD_PROJECT:
+        raise ValueError("GOOGLE_CLOUD_PROJECT is not configured")
 
-    llm = ChatGoogleGenerativeAI(
-        model=model_name,
+    llm = ChatVertexAI(
+        model_name=model_name,
         temperature=0,
-        google_api_key=settings.GOOGLE_API_KEY,
+        project=settings.GOOGLE_CLOUD_PROJECT,
+        location=settings.GOOGLE_CLOUD_LOCATION,
     )
 
-    agent = create_react_agent(
-        llm, tools=tools, prompt=SYSTEM_PROMPT
-    )
+    agent = create_react_agent(llm, tools=tools, prompt=SYSTEM_PROMPT)
     return agent
 
 

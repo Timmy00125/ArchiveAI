@@ -4,6 +4,7 @@ Application configuration — reads environment variables (.env supported).
 
 import os
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 # Load .env from project root
@@ -13,13 +14,12 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 class Settings:
     """Central configuration object."""
 
-    # ── Gemini ──────────────────────────────────────────────────────────────
-    GOOGLE_API_KEY: str = os.environ.get("GOOGLE_API_KEY", "")
+    # ── Vertex AI ───────────────────────────────────────────────────────────
+    GOOGLE_CLOUD_PROJECT: str = os.environ.get("GOOGLE_CLOUD_PROJECT", "")
+    GOOGLE_CLOUD_LOCATION: str = os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
     GEMINI_MODEL: str = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
     GEMINI_VISION_MODEL: str = os.environ.get("GEMINI_VISION_MODEL", "gemini-2.5-flash")
-    GEMINI_EMBED_MODEL: str = os.environ.get(
-        "GEMINI_EMBED_MODEL", "gemini-embedding-001"
-    )
+    GEMINI_EMBED_MODEL: str = os.environ.get("GEMINI_EMBED_MODEL", "text-embedding-004")
 
     # ── Vector Store ─────────────────────────────────────────────────────────
     CHROMA_PERSIST_DIR: str = os.environ.get("CHROMA_PERSIST_DIR", "./chroma_db")
@@ -50,7 +50,8 @@ class Settings:
 
     # ── Server / CORS ─────────────────────────────────────────────────────────
     CORS_ORIGINS: list = os.environ.get(
-        "CORS_ORIGINS", "http://localhost:3000,http://localhost:5173,http://localhost:8080"
+        "CORS_ORIGINS",
+        "http://localhost:3000,http://localhost:5173,http://localhost:8080",
     ).split(",")
 
     API_PREFIX: str = "/api/v1"
