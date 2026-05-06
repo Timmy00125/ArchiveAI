@@ -4,10 +4,14 @@ Document management API router — list and delete indexed documents.
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from src.config import settings
 from src.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -106,3 +110,39 @@ async def get_document_structure(
         )
 
     return JSONResponse({"filename": filename, "structure": structure})
+
+
+@router.get("/{filename}/content")
+async def get_document_content(
+    filename: str,
+):
+    """
+    Return the extracted markdown text for an indexed document.
+
+    This is the full text content saved during processing, useful for
+    previewing or verifying extraction quality.
+    """
+    safe_filename = Path(filename).name
+    markdown_path = os.path.join(settings.MARKDOWN_DIR, f"{safe_filename}.md")
+
+    if not os.path.exists(markdown_path):
+        return JSONResponse(
+            {
+                "filename": safe_filename,
+                "message": "Content not available (document may not have been indexed in this session).",
+            },
+            status_code=404,
+        )
+
+    try:
+        with open(markdown_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        return JSONResponse(
+            {"filename": safe_filename, "content": content, "length": len(content)}
+        )
+    except Exception as e:
+        logger.error(f"Error reading content for {safe_filename}: {e}")
+        return JSONResponse(
+            {"filename": safe_filename, "error": str(e)},
+            status_code=500,
+        )

@@ -5,10 +5,13 @@ langchain-docling>=0.1.0
 # LangChain / LangGraph
 langchain>=0.3.0
 langchain-text-splitters>=0.3.0
-langchain-google-genai>=2.0.0
+langchain-google-vertexai>=2.0.0
 langgraph>=0.2.0
 langchain-chroma>=0.1.0
 langgraph-checkpoint-postgres>=0.1.0
+
+# Google Cloud
+google-cloud-aiplatform>=1.60.0
 
 # Vector store
 chromadb>=0.4.22

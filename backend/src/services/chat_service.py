@@ -6,21 +6,20 @@ from __future__ import annotations
 
 import json
 import uuid
-from typing import AsyncGenerator, List, Dict, Any
+from typing import Any, AsyncGenerator, Dict, List
 
-from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import MemorySaver
 from psycopg_pool import ConnectionPool
 
 from src.agent import (
-    create_documentation_agent,
-    invoke_agent,
     astream_agent_response,
+    create_documentation_agent,
     get_conversation_history,
+    invoke_agent,
 )
-from src.tools import create_search_tool
-from src.vectorstore import VectorStoreManager
 from src.logging_config import get_logger
+from src.tools import create_search_tool, create_summarize_tool, create_vision_tool
+from src.vectorstore import VectorStoreManager
 
 logger = get_logger(__name__)
 
@@ -30,17 +29,15 @@ class ChatService:
     Manages the LangGraph agent and per-session conversation state.
 
     One ChatService instance is shared for the app lifetime.
-    Thread isolation is handled by the checkpointer keyed on thread_id (session_id).
     """
 
     def __init__(
         self,
         vs_manager: VectorStoreManager,
-        memory: BaseCheckpointSaver | None = None,
         db_pool: ConnectionPool | None = None,
     ):
         self.vs_manager = vs_manager
-        self._memory: BaseCheckpointSaver = memory or MemorySaver()
+        self._memory = MemorySaver()  # Used for session listing/history, not agent checkpointer
         self._db_pool = db_pool
         self._agent = None
         self._setup_persistence_tables()
@@ -256,11 +253,11 @@ class ChatService:
     def _reinit(self):
         """(Re-)create the agent with the current tools."""
         search_tool = create_search_tool(self.vs_manager)
-        self._agent, memory = create_documentation_agent(
-            tools=[search_tool],
-            memory=self._memory,
+        summarize_tool = create_summarize_tool()
+        vision_tool = create_vision_tool()
+        self._agent = create_documentation_agent(
+            tools=[search_tool, summarize_tool, vision_tool],
         )
-        self._memory = memory or MemorySaver()
 
     # ── Public API ─────────────────────────────────────────────────────────────
 
@@ -352,12 +349,18 @@ class ChatService:
                     seen_threads.add(thread_id)
                     # Try to get the last message for a preview
                     last_msg = ""
-                    channel_values = checkpoint.get("channel_values", {}) if isinstance(checkpoint, dict) else {}
+                    channel_values = (
+                        checkpoint.get("channel_values", {})
+                        if isinstance(checkpoint, dict)
+                        else {}
+                    )
                     if "messages" in channel_values:
                         msgs = channel_values["messages"]
                         if msgs:
                             if hasattr(msgs[-1], "content"):
-                                last_msg = self._normalize_preview_text(msgs[-1].content)
+                                last_msg = self._normalize_preview_text(
+                                    msgs[-1].content
+                                )
                             else:
                                 last_msg = self._normalize_preview_text(msgs[-1])
 
@@ -367,11 +370,15 @@ class ChatService:
                     if not timestamp and isinstance(checkpoint, dict):
                         timestamp = checkpoint.get("ts", "")
 
-                    sessions.append({
-                        "session_id": thread_id,
-                        "last_message": last_msg[:50] + "..." if len(last_msg) > 50 else last_msg,
-                        "timestamp": timestamp,
-                    })
+                    sessions.append(
+                        {
+                            "session_id": thread_id,
+                            "last_message": last_msg[:50] + "..."
+                            if len(last_msg) > 50
+                            else last_msg,
+                            "timestamp": timestamp,
+                        }
+                    )
         except Exception as e:
             logger.warning(f"Could not list sessions: {e}")
 

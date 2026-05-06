@@ -5,12 +5,12 @@ Vector store management — persistent Chroma with full CRUD support.
 from __future__ import annotations
 
 import os
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
-from langchain_core.documents import Document
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_chroma import Chroma
+from langchain_core.documents import Document
+from langchain_google_vertexai import VertexAIEmbeddings
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from src.config import settings
 from src.logging_config import get_logger
@@ -29,8 +29,10 @@ class VectorStoreManager:
         self.persist_dir = persist_dir or settings.CHROMA_PERSIST_DIR
         self.collection_name = collection_name or settings.CHROMA_COLLECTION
 
-        self.embeddings = GoogleGenerativeAIEmbeddings(
-            model=settings.GEMINI_EMBED_MODEL
+        self.embeddings = VertexAIEmbeddings(
+            model_name=settings.GEMINI_EMBED_MODEL,
+            project=settings.GOOGLE_CLOUD_PROJECT,
+            location=settings.GOOGLE_CLOUD_LOCATION,
         )
         self.text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=settings.CHUNK_SIZE,
@@ -89,7 +91,20 @@ class VectorStoreManager:
             return 0
 
         store = self._get_store()
-        store.add_documents(chunks)
+        try:
+            store.add_documents(chunks)
+        except Exception as e:
+            if "dimension" in str(e).lower() and "got" in str(e).lower():
+                logger.warning(
+                    f"⚠️ Dimension mismatch detected: {e}. Recreating collection '{self.collection_name}'..."
+                )
+                store.delete_collection()
+                self._store = self._load_or_create()
+                store = self._store
+                store.add_documents(chunks)
+            else:
+                raise e
+
         logger.info(f"✅  Added {len(chunks)} chunks to vector store")
         return len(chunks)
 
@@ -142,9 +157,7 @@ class VectorStoreManager:
         )
         return len(results.get("ids", [])) > 0
 
-    def search_similar(
-        self, query: str, k: int | None = None
-    ) -> List[Document]:
+    def search_similar(self, query: str, k: int | None = None) -> List[Document]:
         """
         Semantic similarity search.
 

@@ -13,21 +13,19 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from langgraph.checkpoint.postgres import PostgresSaver
 from psycopg_pool import ConnectionPool
-
-from src.config import settings
-from src.logging_config import setup_logging, get_logger
-from src.document_processor import DocumentProcessor
-from src.vectorstore import VectorStoreManager
-from src.services.document_service import DocumentService
-from src.services.chat_service import ChatService
 
 # Import routers
 from src.api import chat as chat_router
 from src.api import documents as documents_router
-from src.api import upload as upload_router
 from src.api import search as search_router
+from src.api import upload as upload_router
+from src.config import settings
+from src.document_processor import DocumentProcessor
+from src.logging_config import get_logger, setup_logging
+from src.services.chat_service import ChatService
+from src.services.document_service import DocumentService
+from src.vectorstore import VectorStoreManager
 
 setup_logging()
 logger = get_logger(__name__)
@@ -57,15 +55,14 @@ async def lifespan(app: FastAPI):
     """Initialise shared resources at startup, clean up on shutdown."""
     logger.info("🚀 Starting Document Intelligence API…")
 
-    if not settings.GOOGLE_API_KEY:
+    if not settings.GOOGLE_CLOUD_PROJECT:
         logger.warning(
-            "⚠️  GOOGLE_API_KEY is not set. "
+            "⚠️  GOOGLE_CLOUD_PROJECT is not set. "
             "Set it in your .env file or environment before making LLM calls."
         )
 
-    # Database and Checkpointer setup
+    # Database setup
     pool = None
-    checkpointer = None
     try:
         pool = ConnectionPool(
             conninfo=settings.POSTGRES_URI,
@@ -73,26 +70,13 @@ async def lifespan(app: FastAPI):
             open=True,
             kwargs={"autocommit": True},
         )
-        try:
-            checkpointer = PostgresSaver(pool)
-            # Setup checkpoint tables if they don't exist.
-            checkpointer.setup()
-            logger.info("✅ PostgreSQL chat history storage initialized")
-        except Exception as err:
-            logger.warning(
-                "⚠️ PostgreSQL connected, but checkpointer setup failed: %s. "
-                "Continuing with MemorySaver checkpoints.",
-                err,
-            )
-            checkpointer = None
+        logger.info("✅ PostgreSQL chat history storage initialized")
     except Exception as e:
         logger.warning(
-            "⚠️ Could not connect to PostgreSQL: %s. "
-            "Falling back to MemorySaver.",
+            "⚠️ Could not connect to PostgreSQL: %s. Continuing without database.",
             e,
         )
         pool = None
-        checkpointer = None
 
     # Shared components — created once and stored on app.state
     processor = DocumentProcessor()
@@ -100,7 +84,6 @@ async def lifespan(app: FastAPI):
     document_service = DocumentService(vs_manager=vs_manager, processor=processor)
     chat_service = ChatService(
         vs_manager=vs_manager,
-        memory=checkpointer,
         db_pool=pool,
     )
 

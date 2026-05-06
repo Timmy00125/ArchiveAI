@@ -4,8 +4,11 @@ Document service — orchestrates upload, listing, and deletion of documents.
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from typing import List, Dict, Any, Tuple
 
+from src.config import settings
 from src.document_processor import DocumentProcessor
 from src.vectorstore import VectorStoreManager
 from src.logging_config import get_logger
@@ -45,19 +48,38 @@ class DocumentService:
         Returns:
             {"status": "indexed"|"unchanged"|"error", "filename": str, "chunks_added": int}
         """
-        if skip_if_exists and self.vs_manager.document_exists(filename):
-            logger.info(f"⏭️  Skipping '{filename}' — already indexed")
-            return {"status": "unchanged", "filename": filename, "chunks_added": 0}
+        # Sanitize filename to prevent path traversal
+        safe_filename = Path(filename).name
+
+        if skip_if_exists and self.vs_manager.document_exists(safe_filename):
+            logger.info(f"⏭️  Skipping '{safe_filename}' — already indexed")
+            return {"status": "unchanged", "filename": safe_filename, "chunks_added": 0}
 
         try:
-            docs, _ = self.processor.process_file_bytes(content, filename, content_type)
+            # Save original file to disk for vision analysis tool
+            os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+            upload_path = os.path.join(settings.UPLOAD_DIR, safe_filename)
+            with open(upload_path, "wb") as f:
+                f.write(content)
+
+            docs, _ = self.processor.process_file_bytes(content, safe_filename, content_type)
 
             if not docs:
-                return {"status": "error", "filename": filename, "error": "No content extracted"}
+                return {"status": "error", "filename": safe_filename, "error": "No content extracted"}
+
+            # Save full markdown text to disk for summarization tool
+            try:
+                os.makedirs(settings.MARKDOWN_DIR, exist_ok=True)
+                markdown_path = os.path.join(settings.MARKDOWN_DIR, f"{safe_filename}.md")
+                full_text = "\n\n".join(doc.page_content for doc in docs)
+                with open(markdown_path, "w", encoding="utf-8") as f:
+                    f.write(full_text)
+            except Exception as e:
+                logger.warning(f"Could not save markdown for {safe_filename}: {e}")
 
             chunks_added = self.vs_manager.add_documents(docs)
-            logger.info(f"✅ Indexed '{filename}': {chunks_added} chunks")
-            return {"status": "indexed", "filename": filename, "chunks_added": chunks_added}
+            logger.info(f"✅ Indexed '{safe_filename}': {chunks_added} chunks")
+            return {"status": "indexed", "filename": safe_filename, "chunks_added": chunks_added}
 
         except Exception as e:
             logger.error(f"❌ Failed to index '{filename}': {e}")
@@ -117,7 +139,7 @@ class DocumentService:
 
     def delete_document(self, filename: str) -> Dict[str, Any]:
         """
-        Delete all chunks for a given filename.
+        Delete all chunks for a given filename and clean up disk files.
 
         Returns:
             {"success": bool, "filename": str, "deleted_chunks": int}
@@ -125,17 +147,29 @@ class DocumentService:
         if not filename or not filename.strip():
             return {"success": False, "filename": filename, "error": "Filename is required"}
 
-        deleted = self.vs_manager.delete_documents_by_filename(filename.strip())
+        safe_filename = Path(filename).name
+        deleted = self.vs_manager.delete_documents_by_filename(safe_filename)
 
         if deleted == 0:
             return {
                 "success": False,
-                "filename": filename,
+                "filename": safe_filename,
                 "deleted_chunks": 0,
                 "error": "No chunks found for this filename",
             }
 
-        return {"success": True, "filename": filename, "deleted_chunks": deleted}
+        # Clean up saved disk files
+        try:
+            upload_path = os.path.join(settings.UPLOAD_DIR, safe_filename)
+            markdown_path = os.path.join(settings.MARKDOWN_DIR, f"{safe_filename}.md")
+            if os.path.exists(upload_path):
+                os.remove(upload_path)
+            if os.path.exists(markdown_path):
+                os.remove(markdown_path)
+        except Exception as e:
+            logger.warning(f"Could not clean up disk files for {safe_filename}: {e}")
+
+        return {"success": True, "filename": safe_filename, "deleted_chunks": deleted}
 
     def check_file_exists(self, filename: str) -> bool:
         """Return True if the file is already indexed."""

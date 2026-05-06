@@ -4,15 +4,12 @@ LangGraph agent configuration — Gemini-powered, async streaming, multi-session
 
 from __future__ import annotations
 
-import asyncio
-from typing import AsyncGenerator, List, Any, Dict
+from typing import Any, AsyncGenerator, Dict, List
 
-from langchain_core.messages import HumanMessage, BaseMessage
+from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_core.tools import BaseTool
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_google_vertexai import ChatVertexAI
 from langgraph.prebuilt import create_react_agent
-from langgraph.checkpoint.base import BaseCheckpointSaver
-from langgraph.checkpoint.memory import MemorySaver
 
 from src.config import settings
 from src.logging_config import get_logger
@@ -24,7 +21,9 @@ You are a helpful document intelligence assistant. You have access to documents 
 that have been uploaded and processed (PDFs, Word documents, presentations, HTML files, etc.).
 
 GUIDELINES:
-- Use the search_documents tool to find relevant information from the uploaded documents
+- Use the search_documents tool to find specific information within documents.
+- Use the summarize_document tool to get a high-level overview or full summary of a specific file.
+- Use the analyze_image_document tool to visually inspect a document if standard search fails, especially for charts, diagrams, or complex visual layouts.
 - Be efficient: one well-crafted search is usually sufficient
 - Only search again if the first results are clearly incomplete
 - Provide clear, accurate answers based on the document contents
@@ -43,7 +42,6 @@ When answering:
 def create_documentation_agent(
     tools: List[BaseTool],
     model_name: str | None = None,
-    memory: BaseCheckpointSaver | None = None,
 ):
     """
     Create a document intelligence assistant agent using LangGraph.
@@ -51,26 +49,23 @@ def create_documentation_agent(
     Args:
         tools:       List of tools the agent can use
         model_name:  Gemini model name (defaults to settings.GEMINI_MODEL)
-        memory:      Checkpoint saver instance (shared across sessions via thread_id)
 
     Returns:
         Compiled LangGraph agent
     """
     model_name = model_name or settings.GEMINI_MODEL
-    if not settings.GOOGLE_API_KEY:
-        raise ValueError("GOOGLE_API_KEY is not configured")
+    if not settings.GOOGLE_CLOUD_PROJECT:
+        raise ValueError("GOOGLE_CLOUD_PROJECT is not configured")
 
-    llm = ChatGoogleGenerativeAI(
-        model=model_name,
+    llm = ChatVertexAI(
+        model_name=model_name,
         temperature=0,
-        google_api_key=settings.GOOGLE_API_KEY,
+        project=settings.GOOGLE_CLOUD_PROJECT,
+        location=settings.GOOGLE_CLOUD_LOCATION,
     )
-    memory = memory or MemorySaver()
 
-    agent = create_react_agent(
-        llm, tools=tools, prompt=SYSTEM_PROMPT, checkpointer=memory
-    )
-    return agent, memory
+    agent = create_react_agent(llm, tools=tools, prompt=SYSTEM_PROMPT)
+    return agent
 
 
 async def astream_agent_response(
@@ -130,19 +125,10 @@ async def invoke_agent(
     messages = [HumanMessage(content=prompt)]
 
     try:
-        try:
-            result: Dict[str, Any] = await agent.ainvoke(
-                {"messages": messages},
-                config=config,
-            )
-        except NotImplementedError:
-            # Some checkpoint savers implement sync APIs only (get_tuple/put_tuple).
-            # Fallback keeps chat functional while preserving checkpoint support.
-            result = await asyncio.to_thread(
-                agent.invoke,
-                {"messages": messages},
-                config,
-            )
+        result: Dict[str, Any] = await agent.ainvoke(
+            {"messages": messages},
+            config=config,
+        )
 
         # The last message in the output is the assistant reply.
         output_messages: List[BaseMessage] = result.get("messages", [])
@@ -205,7 +191,12 @@ def get_conversation_history(memory: BaseCheckpointSaver, thread_id: str) -> Lis
                 continue
 
             if isinstance(msg, dict):
-                role_map = {"human": "user", "ai": "assistant", "user": "user", "assistant": "assistant"}
+                role_map = {
+                    "human": "user",
+                    "ai": "assistant",
+                    "user": "user",
+                    "assistant": "assistant",
+                }
                 role_raw = msg.get("type") or msg.get("role")
                 role = role_map.get(role_raw)
                 content = msg.get("content")
