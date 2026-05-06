@@ -91,7 +91,20 @@ class VectorStoreManager:
             return 0
 
         store = self._get_store()
-        store.add_documents(chunks)
+        try:
+            store.add_documents(chunks)
+        except Exception as e:
+            if "dimension" in str(e).lower() and "got" in str(e).lower():
+                logger.warning(
+                    f"⚠️ Dimension mismatch detected: {e}. Recreating collection '{self.collection_name}'..."
+                )
+                store.delete_collection()
+                self._store = self._load_or_create()
+                store = self._store
+                store.add_documents(chunks)
+            else:
+                raise e
+
         logger.info(f"✅  Added {len(chunks)} chunks to vector store")
         return len(chunks)
 
