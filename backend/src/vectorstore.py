@@ -1,15 +1,14 @@
 """
-Vector store management — persistent Chroma with full CRUD support.
+Vector store management — pgvector with full CRUD support.
 """
 
 from __future__ import annotations
 
-import os
 from typing import Any, Dict, List
 
-from langchain_chroma import Chroma
 from langchain_core.documents import Document
 from langchain_google_vertexai import VertexAIEmbeddings
+from langchain_postgres import PGVector
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from src.config import settings
@@ -19,15 +18,13 @@ logger = get_logger(__name__)
 
 
 class VectorStoreManager:
-    """Manages document chunking, embedding, and persistent vector storage."""
+    """Manages document chunking, embedding, and persistent vector storage via pgvector."""
 
     def __init__(
         self,
-        persist_dir: str | None = None,
         collection_name: str | None = None,
     ):
-        self.persist_dir = persist_dir or settings.CHROMA_PERSIST_DIR
-        self.collection_name = collection_name or settings.CHROMA_COLLECTION
+        self.collection_name = collection_name or settings.PGVECTOR_COLLECTION
 
         self.embeddings = VertexAIEmbeddings(
             model_name=settings.GEMINI_EMBED_MODEL,
@@ -39,42 +36,36 @@ class VectorStoreManager:
             chunk_overlap=settings.CHUNK_OVERLAP,
             length_function=len,
         )
-        self._store: Chroma | None = None
+        self._store: PGVector | None = None
 
-    # ── Internal store access ─────────────────────────────────────────────────
-
-    def _get_store(self) -> Chroma:
-        """Return the active Chroma instance, creating/loading as needed."""
+    def _get_store(self) -> PGVector:
+        """Return the active PGVector instance, creating/loading as needed."""
         if self._store is None:
             self._store = self._load_or_create()
         return self._store
 
-    def _load_or_create(self) -> Chroma:
-        """Load an existing persistent store, or create a fresh one."""
-        os.makedirs(self.persist_dir, exist_ok=True)
-        store = Chroma(
+    def _load_or_create(self) -> PGVector:
+        """Create or connect to the pgvector-backed store."""
+        store = PGVector(
             collection_name=self.collection_name,
-            embedding_function=self.embeddings,
-            persist_directory=self.persist_dir,
+            connection=settings.PGVECTOR_URI,
+            embeddings=self.embeddings,
+            use_jsonb=True,
         )
-        count = store._collection.count()
         logger.info(
-            f"🗄️  Chroma loaded: '{self.collection_name}' "
-            f"({count} chunks) @ {self.persist_dir}"
+            f"pgvector store ready: collection='{self.collection_name}'"
         )
         return store
 
-    # ── Public API ─────────────────────────────────────────────────────────────
-
-    def get_vectorstore(self) -> Chroma:
-        """Return the live Chroma vectorstore (load / create on first call)."""
+    def get_vectorstore(self) -> PGVector:
+        """Return the live PGVector store (load / create on first call)."""
         return self._get_store()
 
     def chunk_documents(self, documents: List[Document]) -> List[Document]:
         """Split documents into smaller chunks."""
-        logger.info(f"✂️  Chunking {len(documents)} document(s)…")
+        logger.info(f"Chunking {len(documents)} document(s)...")
         chunks = self.text_splitter.split_documents(documents)
-        logger.info(f"✅  Created {len(chunks)} chunks")
+        logger.info(f"Created {len(chunks)} chunks")
         return chunks
 
     def add_documents(self, documents: List[Document]) -> int:
@@ -91,21 +82,9 @@ class VectorStoreManager:
             return 0
 
         store = self._get_store()
-        try:
-            store.add_documents(chunks)
-        except Exception as e:
-            if "dimension" in str(e).lower() and "got" in str(e).lower():
-                logger.warning(
-                    f"⚠️ Dimension mismatch detected: {e}. Recreating collection '{self.collection_name}'..."
-                )
-                store.delete_collection()
-                self._store = self._load_or_create()
-                store = self._store
-                store.add_documents(chunks)
-            else:
-                raise e
+        store.add_documents(chunks)
 
-        logger.info(f"✅  Added {len(chunks)} chunks to vector store")
+        logger.info(f"Added {len(chunks)} chunks to vector store")
         return len(chunks)
 
     def delete_documents_by_filename(self, filename: str) -> int:
@@ -114,20 +93,31 @@ class VectorStoreManager:
 
         Returns the number of chunks deleted.
         """
-        store = self._get_store()
-        collection = store._collection
+        try:
+            from sqlalchemy import create_engine, text
 
-        # Find matching IDs
-        results = collection.get(where={"filename": filename}, include=[])
-        ids = results.get("ids", [])
+            engine = create_engine(settings.PGVECTOR_URI)
+            with engine.connect() as conn:
+                result = conn.execute(
+                    text(
+                        "DELETE FROM langchain_pg_embedding "
+                        "WHERE collection_id = ("
+                        "  SELECT uuid FROM langchain_pg_collection WHERE name = :name"
+                        ") AND cmetadata->>'filename' = :filename"
+                    ),
+                    {"name": self.collection_name, "filename": filename},
+                )
+                count = result.rowcount
+                conn.commit()
 
-        if not ids:
-            logger.info(f"ℹ️  No chunks found for filename '{filename}'")
+            if count:
+                logger.info(f"Deleted {count} chunks for '{filename}'")
+            else:
+                logger.info(f"No chunks found for filename '{filename}'")
+            return count or 0
+        except Exception as e:
+            logger.warning(f"Delete failed for '{filename}': {e}")
             return 0
-
-        collection.delete(ids=ids)
-        logger.info(f"🗑️  Deleted {len(ids)} chunks for '{filename}'")
-        return len(ids)
 
     def list_documents(self) -> List[Dict[str, Any]]:
         """
@@ -136,26 +126,58 @@ class VectorStoreManager:
         Returns a list of dicts: [{"filename": str, "chunks": int}, ...]
         """
         store = self._get_store()
-        collection = store._collection
 
-        results = collection.get(include=["metadatas"])
-        metadatas = results.get("metadatas") or []
+        try:
+            from sqlalchemy import create_engine, text
 
-        counts: Dict[str, int] = {}
-        for meta in metadatas:
-            if meta:
-                fn = meta.get("filename", "unknown")
-                counts[fn] = counts.get(fn, 0) + 1
+            engine = create_engine(settings.PGVECTOR_URI)
+            with engine.connect() as conn:
+                result = conn.execute(
+                    text(
+                        f"SELECT cmetadata->>'filename' AS filename, COUNT(*) AS chunks "
+                        f"FROM langchain_pg_embedding "
+                        f"WHERE collection_id = ("
+                        f"  SELECT uuid FROM langchain_pg_collection WHERE name = :name"
+                        f") "
+                        f"GROUP BY cmetadata->>'filename' "
+                        f"ORDER BY filename"
+                    ),
+                    {"name": self.collection_name},
+                )
+                rows = result.fetchall()
 
-        return [{"filename": fn, "chunks": n} for fn, n in sorted(counts.items())]
+            return [
+                {"filename": row[0] or "unknown", "chunks": row[1]}
+                for row in rows
+            ]
+        except Exception as e:
+            logger.warning(f"Could not list documents via SQL: {e}")
+            return []
 
     def document_exists(self, filename: str) -> bool:
         """Return True if at least one chunk with this filename is indexed."""
         store = self._get_store()
-        results = store._collection.get(
-            where={"filename": filename}, include=[], limit=1
-        )
-        return len(results.get("ids", [])) > 0
+
+        try:
+            from sqlalchemy import create_engine, text
+
+            engine = create_engine(settings.PGVECTOR_URI)
+            with engine.connect() as conn:
+                result = conn.execute(
+                    text(
+                        f"SELECT COUNT(*) FROM langchain_pg_embedding "
+                        f"WHERE collection_id = ("
+                        f"  SELECT uuid FROM langchain_pg_collection WHERE name = :name"
+                        f") AND cmetadata->>'filename' = :filename"
+                    ),
+                    {"name": self.collection_name, "filename": filename},
+                )
+                count = result.scalar()
+
+            return (count or 0) > 0
+        except Exception as e:
+            logger.warning(f"Could not check existence for '{filename}': {e}")
+            return False
 
     def search_similar(self, query: str, k: int | None = None) -> List[Document]:
         """
@@ -173,7 +195,7 @@ class VectorStoreManager:
         try:
             return store.similarity_search(query, k=k)
         except Exception as e:
-            logger.error(f"❌ Search error: {e}")
+            logger.error(f"Search error: {e}")
             return []
 
     def search_with_scores(
@@ -181,16 +203,35 @@ class VectorStoreManager:
     ) -> List[tuple[Document, float]]:
         """
         Similarity search returning (doc, score) pairs.
-        Scores are cosine distances (lower = more similar for Chroma).
+        Scores are cosine distances (lower = more similar).
         """
         k = k or settings.SEARCH_K
         store = self._get_store()
         try:
             return store.similarity_search_with_score(query, k=k)
         except Exception as e:
-            logger.error(f"❌ Search-with-scores error: {e}")
+            logger.error(f"Search-with-scores error: {e}")
             return []
 
     def total_chunks(self) -> int:
         """Return total number of chunks in the store."""
-        return self._get_store()._collection.count()
+        try:
+            from sqlalchemy import create_engine, text
+
+            engine = create_engine(settings.PGVECTOR_URI)
+            with engine.connect() as conn:
+                result = conn.execute(
+                    text(
+                        f"SELECT COUNT(*) FROM langchain_pg_embedding "
+                        f"WHERE collection_id = ("
+                        f"  SELECT uuid FROM langchain_pg_collection WHERE name = :name"
+                        f")"
+                    ),
+                    {"name": self.collection_name},
+                )
+                count = result.scalar()
+
+            return count or 0
+        except Exception as e:
+            logger.warning(f"Could not count chunks: {e}")
+            return 0

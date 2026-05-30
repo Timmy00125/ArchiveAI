@@ -8,8 +8,7 @@ __pycache__/
 venv/
 *.egg-info/
 
-# Chroma
-chroma_db/
+# pgvector data is stored in PostgreSQL
 
 
 Open_rag_archive

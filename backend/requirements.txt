@@ -7,14 +7,16 @@ langchain>=0.3.0
 langchain-text-splitters>=0.3.0
 langchain-google-vertexai>=2.0.0
 langgraph>=0.2.0
-langchain-chroma>=0.1.0
 langgraph-checkpoint-postgres>=0.1.0
 
 # Google Cloud
 google-cloud-aiplatform>=1.60.0
 
-# Vector store
-chromadb>=0.4.22
+# Vector store (pgvector)
+pgvector>=0.3.0
+langchain-postgres>=0.0.12
+SQLAlchemy>=2.0.0
+psycopg2-binary>=2.9.0
 
 # Database
 psycopg[binary,pool]>=3.2.0

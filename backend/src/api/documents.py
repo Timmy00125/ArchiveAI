@@ -93,7 +93,7 @@ async def get_document_structure(
     Return Docling structural analysis for an indexed document.
 
     Note: structure data is only available for documents processed in the
-    current server session (not re-loaded from Chroma persistence).
+    current server session (not re-loaded from pgvector persistence).
     """
     # Structure info is stored in app state; populated at upload time
     structures = getattr(request.app.state, "document_structures", {})

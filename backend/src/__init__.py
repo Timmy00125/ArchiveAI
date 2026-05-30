@@ -1,3 +1,3 @@
 """
-Document Intelligence — FastAPI + Docling + Gemini + Chroma package.
+Document Intelligence — FastAPI + Docling + Gemini + pgvector package.
 """

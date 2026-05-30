@@ -95,8 +95,8 @@ async def lifespan(app: FastAPI):
     app.state.document_structures = {}  # in-session Docling structure cache
 
     logger.info(
-        f"✅ Startup complete. "
-        f"Chroma: {settings.CHROMA_PERSIST_DIR} | "
+        f"Startup complete. "
+        f"Vector store: pgvector (collection={settings.PGVECTOR_COLLECTION}) | "
         f"Model: {settings.GEMINI_MODEL} | "
         f"Embed: {settings.GEMINI_EMBED_MODEL}"
     )
@@ -123,7 +123,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Document Intelligence API",
     description=(
-        "RAG-powered document Q&A API built with Docling + LangGraph + Gemini + Chroma.\n\n"
+        "RAG-powered document Q&A API built with Docling + LangGraph + Gemini + pgvector.\n\n"
         "Upload documents, chat with them, search semantically, and manage your knowledge base."
     ),
     version="1.0.0",
@@ -189,7 +189,8 @@ async def health():
         {
             "status": "ok",
             "vector_store": {
-                "persist_dir": settings.CHROMA_PERSIST_DIR,
+                "backend": "pgvector",
+                "collection": settings.PGVECTOR_COLLECTION,
                 "total_chunks": chunk_count,
                 "total_documents": doc_count,
             },

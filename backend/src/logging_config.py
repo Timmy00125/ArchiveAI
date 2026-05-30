@@ -27,7 +27,7 @@ def setup_logging(level: str = "INFO") -> None:
 
     # Quieten noisy libraries
     logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("chromadb").setLevel(logging.WARNING)
+    logging.getLogger("sqlalchemy").setLevel(logging.WARNING)
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
 
