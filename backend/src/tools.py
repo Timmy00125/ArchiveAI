@@ -18,6 +18,23 @@ from src.logging_config import get_logger
 logger = get_logger(__name__)
 
 
+def _extract_text(content) -> str:
+    """Normalize LLM message content (string or list of blocks) into text."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for block in content:
+            if isinstance(block, str):
+                parts.append(block)
+            elif isinstance(block, dict):
+                text = block.get("text", "")
+                if isinstance(text, str) and text:
+                    parts.append(text)
+        return "".join(parts)
+    return ""
+
+
 def create_search_tool(vectorstore_manager):
     """
     Create a search tool bound to a VectorStoreManager.
@@ -88,7 +105,8 @@ def create_summarize_tool():
             )
 
             response = await llm.ainvoke(prompt)
-            return f"Summary of {safe_filename}:\n\n{response.content}"
+            summary_text = _extract_text(response.content)
+            return f"Summary of {safe_filename}:\n\n{summary_text}"
 
         except Exception as e:
             logger.error(f"Error summarizing document {safe_filename}: {e}")
@@ -156,7 +174,7 @@ def create_vision_tool():
             )
 
             response = await llm.ainvoke([message])
-            return response.content
+            return _extract_text(response.content)
 
         except Exception as e:
             logger.error(f"Error visually analyzing document {safe_filename}: {e}")

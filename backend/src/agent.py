@@ -16,6 +16,23 @@ from src.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+
+def _extract_text(content: Any) -> str:
+    """Normalize LLM message content (string or list of blocks) into text."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for block in content:
+            if isinstance(block, str):
+                parts.append(block)
+            elif isinstance(block, dict):
+                text = block.get("text", "")
+                if isinstance(text, str) and text:
+                    parts.append(text)
+        return "".join(parts)
+    return ""
+
 SYSTEM_PROMPT = """\
 You are a helpful document intelligence assistant. You have access to documents \
 that have been uploaded and processed (PDFs, Word documents, presentations, HTML files, etc.).
@@ -102,7 +119,9 @@ async def astream_agent_response(
         ):
             node = metadata.get("langgraph_node", "")
             if "agent" in node.lower() and hasattr(msg, "content") and msg.content:
-                yield msg.content
+                text = _extract_text(msg.content)
+                if text:
+                    yield text
     except Exception as e:
         logger.exception("Agent streaming error (thread=%s)", thread_id)
         message = str(e).strip() or e.__class__.__name__
@@ -138,7 +157,9 @@ async def invoke_agent(
         output_messages: List[BaseMessage] = result.get("messages", [])
         for msg in reversed(output_messages):
             if hasattr(msg, "content") and msg.content and msg.type == "ai":
-                return msg.content
+                text = _extract_text(msg.content)
+                if text:
+                    return text
         return ""
     except Exception as e:
         logger.exception("Agent invoke error (thread=%s)", thread_id)
