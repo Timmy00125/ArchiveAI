@@ -1,0 +1,23 @@
+[Unit]
+Description=ArchiveAI FastAPI Backend
+After=network.target
+
+[Service]
+Type=simple
+User=archiveai
+WorkingDirectory=/opt/archiveai/backend
+Environment="PATH=/opt/archiveai/backend/.venv/bin"
+EnvironmentFile=/opt/archiveai/backend/.env
+ExecStart=/opt/archiveai/backend/.venv/bin/uvicorn src.main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=5
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/archiveai/backend/data
+
+[Install]
+WantedBy=multi-user.target

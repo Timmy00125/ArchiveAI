@@ -9,6 +9,15 @@ This guide explains how to host the **ArchiveAI backend and database on Google C
 
 It is written specifically for this repository.
 
+> **Deployment artifacts included in this repo:**
+> - `backend/.env.production` — production environment template
+> - `backend/Dockerfile` — container image for the backend
+> - `backend/deploy.sh` — one-command deploy script for the VM
+> - `backend/config/systemd/archiveai.service` — systemd unit file
+> - `backend/config/nginx/archiveai` — nginx reverse proxy config
+> - `backend/scripts/setup_gcp.sh` — GCP infrastructure bootstrap script
+> - `backend/scripts/backup.sh` — local data backup script
+
 ---
 
 ## 1. What this project needs
@@ -1014,8 +1023,13 @@ For this repository, the most practical GCP hosting strategy is:
 
 It is cheap, simple, and works with your current code without major changes. All critical data (chat history, sessions, vectors) lives in Cloud SQL where automated backups protect it.
 
-If you want, the next useful step after this guide would be one of these:
+The deployment artifacts are already in the repository:
 
-1. I can also write a **`backend/Dockerfile` + `deploy.sh`** for this GCP VM setup
-2. I can write a **`systemd` service file and Nginx config** directly into the repo
-3. I can help you create a **Cloud Run version later** after refactoring storage
+1. **`backend/Dockerfile`** — build a container image if you prefer Docker over systemd
+2. **`backend/deploy.sh`** — run this on a fresh VM to install dependencies, configure systemd + nginx, and start the app
+3. **`backend/config/systemd/archiveai.service`** — runs the backend as a persistent service
+4. **`backend/config/nginx/archiveai`** — reverse proxy with large upload support
+5. **`backend/scripts/setup_gcp.sh`** — bootstraps GCP infrastructure (APIs, Cloud SQL, VM, firewall)
+6. **`backend/scripts/backup.sh`** — backs up local uploads, markdown, and structures
+
+If you want to move to **Cloud Run** later, you will need to refactor file storage to use Google Cloud Storage instead of local disk.
