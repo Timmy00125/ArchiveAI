@@ -105,10 +105,15 @@ export function DocumentTable({ refreshTrigger }: { refreshTrigger: number }) {
   const handleViewStructure = async (filename: string) => {
     setActiveFile(filename);
     try {
-      const res = await fetchApi<{ structure?: string }>(
+      const res = await fetchApi<{ structure?: string | object }>(
         `/documents/${filename}/structure`,
       );
-      setStructureData(res.structure || JSON.stringify(res, null, 2));
+      const structure = res.structure;
+      setStructureData(
+        typeof structure === "string"
+          ? structure
+          : JSON.stringify(structure || res, null, 2),
+      );
       setStructureOpen(true);
     } catch (error) {
       console.error(error);
