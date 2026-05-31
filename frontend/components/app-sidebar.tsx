@@ -12,99 +12,25 @@ import {
   SidebarMenuButton,
   SidebarFooter,
 } from "@/components/ui/sidebar";
-import { MessageSquare, FileText, Search, Sparkles, Clock } from "lucide-react";
+import { MessageSquare, FileText, Search, Clock, Settings } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useParams } from "next/navigation";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { motion } from "framer-motion";
-import { useEffect, useState } from "react";
-import { fetchApi } from "@/lib/api";
-import { ChatSessionSummary } from "@/lib/types";
-
-interface ChatSessionSummaryApi {
-  session_id: string;
-  last_message?: unknown;
-  timestamp?: string;
-}
-
-function normalizePreviewText(value: unknown): string {
-  if (typeof value === "string") return value;
-  if (value == null) return "";
-
-  if (Array.isArray(value)) {
-    return value
-      .map((item) => normalizePreviewText(item))
-      .filter(Boolean)
-      .join(" ")
-      .trim();
-  }
-
-  if (typeof value === "object") {
-    const obj = value as Record<string, unknown>;
-    if (typeof obj.text === "string") return obj.text;
-
-    const parts = [obj.content, obj.value, obj.type]
-      .filter(
-        (item): item is string => typeof item === "string" && item.length > 0,
-      )
-      .join(" ")
-      .trim();
-
-    if (parts) return parts;
-  }
-
-  try {
-    return String(value);
-  } catch {
-    return "";
-  }
-}
+import { useChatSessions } from "@/hooks/use-chat-sessions";
 
 export function AppSidebar() {
   const pathname = usePathname();
   const params = useParams();
   const sessionId = params?.sessionId as string;
 
-  const [recentChats, setRecentChats] = useState<ChatSessionSummary[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    async function loadSessions() {
-      setLoading(true);
-      try {
-        const response = await fetchApi<{ sessions: ChatSessionSummaryApi[] }>(
-          "/chat/sessions",
-        );
-        const sanitized: ChatSessionSummary[] = (response.sessions || []).map(
-          (session) => ({
-            session_id: session.session_id,
-            last_message: normalizePreviewText(session.last_message),
-            timestamp: session.timestamp || "",
-          }),
-        );
-        // Sort by timestamp if available
-        const sorted = sanitized.sort((a, b) => {
-          if (!a.timestamp) return 1;
-          if (!b.timestamp) return -1;
-          return (
-            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-          );
-        });
-        setRecentChats(sorted.slice(0, 10)); // Top 10 recent
-      } catch (err) {
-        console.error("Failed to load chat sessions:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadSessions();
-  }, [pathname]); // Refresh on navigation
+  const { sessions: recentChats, loading } = useChatSessions();
 
   const navigation = [
     { name: "Chat", href: "/chat", icon: MessageSquare },
     { name: "Documents", href: "/documents", icon: FileText },
     { name: "Search", href: "/search", icon: Search },
+    { name: "Settings", href: "/settings", icon: Settings },
   ];
 
   return (
@@ -215,8 +141,9 @@ export function AppSidebar() {
                   );
                 })
               ) : loading ? (
-                <div className="px-4 py-2 font-mono text-[10px] text-muted-foreground">
-                  Loading...
+                <div className="px-4 py-2">
+                  <div className="h-4 w-full rounded bg-muted animate-pulse" />
+                  <div className="h-4 w-3/4 rounded bg-muted animate-pulse mt-2" />
                 </div>
               ) : (
                 <div className="px-4 py-2 font-mono text-[10px] text-muted-foreground italic">
@@ -227,17 +154,10 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="p-6">
-        <div className="border border-border p-4 flex flex-col gap-2 items-center text-center">
-          <div className="p-2 border border-border text-muted-foreground">
-            <Sparkles size={14} />
-          </div>
-          <div className="font-mono text-[9px] tracking-[0.2em] text-muted-foreground uppercase">
-            Pro Version
-          </div>
-          <div className="font-mono text-[10px] text-muted-foreground leading-tight">
-            Unlock advanced extraction & larger context
-          </div>
+      <SidebarFooter className="p-4 border-t border-border/40">
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>ArchiveAI v0.1</span>
+          <ThemeToggle />
         </div>
       </SidebarFooter>
     </Sidebar>

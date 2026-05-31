@@ -6,7 +6,8 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Message } from "@/lib/types";
 import { fetchApi } from "@/lib/api";
-import { Loader2 } from "lucide-react";
+import { normalizeMessageContent } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface ChatHistoryMessage {
   id?: string;
@@ -22,17 +23,6 @@ interface ChatHistoryResponse {
 
 function normalizeRole(role: ChatHistoryMessage["role"]): Message["role"] {
   return role === "assistant" ? "assistant" : "user";
-}
-
-function normalizeMessageContent(value: unknown): string {
-  if (typeof value === "string") return value;
-  if (value == null) return "";
-
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
 }
 
 export default function ChatSessionPage() {
@@ -76,8 +66,10 @@ export default function ChatSessionPage() {
       </header>
       <div className="flex-1 overflow-hidden">
         {isLoading ? (
-          <div className="h-full flex items-center justify-center">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <div className="h-full flex flex-col items-center justify-center gap-4 p-8">
+            <Skeleton className="h-16 w-full max-w-2xl rounded-xl" />
+            <Skeleton className="h-24 w-full max-w-2xl rounded-xl" />
+            <Skeleton className="h-16 w-full max-w-2xl rounded-xl" />
           </div>
         ) : (
           <ChatArea sessionId={sessionId} initialMessages={initialMessages} />

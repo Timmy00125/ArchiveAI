@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Navigation } from "@/components/landing/navigation";
 import { Hero } from "@/components/landing/hero";
 import { Stats } from "@/components/landing/stats";
@@ -45,18 +46,18 @@ export default function Home() {
               START YOUR<br />FIRST SESSION.
             </h2>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <a
+              <Link
                 href="/chat"
                 className="brutalist-hover inline-flex items-center justify-center px-10 py-5 border border-foreground font-mono text-[11px] tracking-[0.2em] text-foreground transition-all duration-150"
               >
                 LAUNCH ARCHIVEAI →
-              </a>
-              <a
+              </Link>
+              <Link
                 href="/documents"
                 className="inline-flex items-center justify-center px-10 py-5 border border-border font-mono text-[11px] tracking-[0.2em] text-muted-foreground transition-all duration-150 hover:text-foreground hover:border-foreground"
               >
                 UPLOAD DOCUMENTS
-              </a>
+              </Link>
             </div>
           </div>
         </section>

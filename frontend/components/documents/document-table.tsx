@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { fetchApi } from "@/lib/api";
 import {
   Table,
   TableBody,
@@ -35,19 +34,21 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-
-interface DocumentStats {
-  filename: string;
-  chunks: number;
-}
-
-interface DocumentsResponse {
-  documents: DocumentStats[];
-  total_documents: number;
-  total_chunks: number;
-}
+import { fetchApi } from "@/lib/api";
+import { useDocuments } from "@/hooks/use-documents";
 
 interface DocumentContentResponse {
   filename: string;
@@ -57,50 +58,21 @@ interface DocumentContentResponse {
 
 export function DocumentTable({ refreshTrigger }: { refreshTrigger: number }) {
   const router = useRouter();
-  const [data, setData] = useState<DocumentsResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const { data, isLoading, fetchDocuments, deleteDocument } = useDocuments();
 
-  // Dialog state for structure
   const [structureOpen, setStructureOpen] = useState(false);
   const [structureData, setStructureData] = useState<string | null>(null);
   const [activeFile, setActiveFile] = useState<string | null>(null);
 
-  // Dialog state for content preview
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewContent, setPreviewContent] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
-  const fetchDocuments = async () => {
-    try {
-      setIsLoading(true);
-      const res = await fetchApi<DocumentsResponse>("/documents");
-      setData(res);
-    } catch (error) {
-      console.error(error);
-      toast.error("Failed to load documents");
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   useEffect(() => {
     fetchDocuments();
-  }, [refreshTrigger]);
-
-  const handleDelete = async (filename: string) => {
-    if (!confirm(`Delete ${filename}?`)) return;
-    try {
-      await fetchApi("/documents", {
-        method: "DELETE",
-        body: JSON.stringify({ filename }),
-      });
-      toast.success(`${filename} deleted`);
-      fetchDocuments();
-    } catch (error) {
-      console.error(error);
-      toast.error("Failed to delete document");
-    }
-  };
+  }, [refreshTrigger, fetchDocuments]);
 
   const handleViewStructure = async (filename: string) => {
     setActiveFile(filename);
@@ -139,28 +111,20 @@ export function DocumentTable({ refreshTrigger }: { refreshTrigger: number }) {
     }
   };
 
-  const startChatQuery = (query: string) => {
-    router.push(`/chat?query=${encodeURIComponent(query)}`);
-  };
-
-  const handleSummarize = (filename: string) => {
-    startChatQuery(`Summarize the document "${filename}"`);
-  };
-
-  const handleVisualAnalysis = (filename: string) => {
-    startChatQuery(
-      `Analyze the charts, diagrams, and visual content in "${filename}"`,
-    );
-  };
-
-  const handleAskAbout = (filename: string) => {
-    startChatQuery(`Tell me about the document "${filename}"`);
-  };
+  const startChatQuery = useCallback(
+    (query: string) => {
+      router.push(`/chat?query=${encodeURIComponent(query)}`);
+    },
+    [router],
+  );
 
   if (isLoading) {
     return (
-      <div className="text-center p-8 text-muted-foreground">
-        Loading documents...
+      <div className="space-y-3">
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-12 w-full" />
+        <Skeleton className="h-12 w-full" />
+        <Skeleton className="h-12 w-full" />
       </div>
     );
   }
@@ -208,6 +172,7 @@ export function DocumentTable({ refreshTrigger }: { refreshTrigger: number }) {
                             size="icon"
                             onClick={() => handlePreview(doc.filename)}
                             className="h-8 w-8"
+                            aria-label={`Preview ${doc.filename}`}
                           >
                             <Eye className="h-4 w-4" />
                           </Button>
@@ -222,8 +187,13 @@ export function DocumentTable({ refreshTrigger }: { refreshTrigger: number }) {
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => handleSummarize(doc.filename)}
+                            onClick={() =>
+                              startChatQuery(
+                                `Summarize the document "${doc.filename}"`,
+                              )
+                            }
                             className="h-8 w-8 text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/20"
+                            aria-label={`Summarize ${doc.filename}`}
                           >
                             <Sparkles className="h-4 w-4" />
                           </Button>
@@ -238,8 +208,13 @@ export function DocumentTable({ refreshTrigger }: { refreshTrigger: number }) {
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => handleVisualAnalysis(doc.filename)}
+                            onClick={() =>
+                              startChatQuery(
+                                `Analyze the charts, diagrams, and visual content in "${doc.filename}"`,
+                              )
+                            }
                             className="h-8 w-8 text-purple-600 hover:text-purple-700 hover:bg-purple-50 dark:hover:bg-purple-950/20"
+                            aria-label={`Visual analysis of ${doc.filename}`}
                           >
                             <ImageIcon className="h-4 w-4" />
                           </Button>
@@ -254,8 +229,13 @@ export function DocumentTable({ refreshTrigger }: { refreshTrigger: number }) {
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => handleAskAbout(doc.filename)}
+                            onClick={() =>
+                              startChatQuery(
+                                `Tell me about the document "${doc.filename}"`,
+                              )
+                            }
                             className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/20"
+                            aria-label={`Ask about ${doc.filename}`}
                           >
                             <MessageSquare className="h-4 w-4" />
                           </Button>
@@ -272,6 +252,7 @@ export function DocumentTable({ refreshTrigger }: { refreshTrigger: number }) {
                             size="icon"
                             onClick={() => handleViewStructure(doc.filename)}
                             className="h-8 w-8"
+                            aria-label={`View structure of ${doc.filename}`}
                           >
                             <FileCode2 className="h-4 w-4" />
                           </Button>
@@ -287,7 +268,8 @@ export function DocumentTable({ refreshTrigger }: { refreshTrigger: number }) {
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                            onClick={() => handleDelete(doc.filename)}
+                            onClick={() => setDeleteTarget(doc.filename)}
+                            aria-label={`Delete ${doc.filename}`}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -309,7 +291,6 @@ export function DocumentTable({ refreshTrigger }: { refreshTrigger: number }) {
           <span>Total Vector Chunks: {data.total_chunks}</span>
         </div>
 
-        {/* Structure Dialog */}
         <Dialog open={structureOpen} onOpenChange={setStructureOpen}>
           <DialogContent className="max-w-2xl h-[80vh] flex flex-col">
             <DialogHeader>
@@ -321,7 +302,6 @@ export function DocumentTable({ refreshTrigger }: { refreshTrigger: number }) {
           </DialogContent>
         </Dialog>
 
-        {/* Preview Dialog */}
         <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
           <DialogContent className="max-w-3xl h-[85vh] flex flex-col">
             <DialogHeader>
@@ -332,8 +312,10 @@ export function DocumentTable({ refreshTrigger }: { refreshTrigger: number }) {
             </DialogHeader>
             <ScrollArea className="flex-1 bg-muted/30 p-6 rounded-md border mt-2">
               {previewLoading ? (
-                <div className="text-center text-muted-foreground py-12">
-                  Loading content...
+                <div className="space-y-3 p-4">
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-5/6" />
+                  <Skeleton className="h-4 w-4/6" />
                 </div>
               ) : previewContent ? (
                 <div className="prose dark:prose-invert prose-sm max-w-none">
@@ -349,6 +331,35 @@ export function DocumentTable({ refreshTrigger }: { refreshTrigger: number }) {
             </ScrollArea>
           </DialogContent>
         </Dialog>
+
+        <AlertDialog
+          open={!!deleteTarget}
+          onOpenChange={(open) => !open && setDeleteTarget(null)}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete document?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently delete &quot;{deleteTarget}&quot; and all
+                its indexed chunks. This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  if (deleteTarget) {
+                    deleteDocument(deleteTarget);
+                    setDeleteTarget(null);
+                  }
+                }}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </>
     </TooltipProvider>
   );

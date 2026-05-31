@@ -3,9 +3,7 @@
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { SearchIcon, Loader2, FileText } from "lucide-react";
-import { fetchApi } from "@/lib/api";
-import { toast } from "sonner";
+import { SearchIcon, Loader2, FileText, ChevronDown, ChevronUp } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -13,46 +11,17 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-
-interface SearchResult {
-  content: string;
-  metadata: {
-    source: string;
-    page: number;
-    [key: string]: unknown;
-  };
-  score?: number;
-}
+import { useSearch } from "@/hooks/use-search";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export function SearchUI() {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<SearchResult[]>([]);
-  const [hasSearched, setHasSearched] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const { results, hasSearched, isLoading, search } = useSearch();
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
 
-  const handleSearch = async (e?: React.FormEvent) => {
+  const handleSearch = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!query.trim()) return;
-
-    setIsLoading(true);
-    setHasSearched(true);
-    try {
-      const data = await fetchApi<{ results?: SearchResult[] }>("/search", {
-        method: "POST",
-        body: JSON.stringify({
-          query: query.trim(),
-          k: 10,
-          with_scores: true,
-        }),
-      });
-
-      setResults(data.results || []);
-    } catch (error) {
-      console.error(error);
-      toast.error("Search failed");
-    } finally {
-      setIsLoading(false);
-    }
+    search(query);
   };
 
   return (
@@ -63,8 +32,9 @@ export function SearchUI() {
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search your documents exactly..."
+            placeholder="Search your documents..."
             className="pl-10 h-12"
+            aria-label="Search documents"
           />
         </div>
         <Button
@@ -82,32 +52,66 @@ export function SearchUI() {
             {isLoading ? "Searching..." : `Found ${results.length} results`}
           </h3>
 
+          {isLoading && (
+            <div className="grid gap-4">
+              <Skeleton className="h-32 w-full rounded-lg" />
+              <Skeleton className="h-32 w-full rounded-lg" />
+            </div>
+          )}
+
           <div className="grid gap-4">
-            {results.map((result, idx) => (
-              <Card key={idx}>
-                <CardHeader className="py-4 pb-2">
-                  <div className="flex items-start justify-between">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <FileText className="h-4 w-4 text-primary" />
-                      {result.metadata?.source || "Unknown Document"}
-                    </CardTitle>
-                    {result.score !== undefined && (
-                      <div className="text-xs font-mono bg-muted px-2 py-1 rounded">
-                        Score: {result.score.toFixed(4)}
-                      </div>
+            {results.map((result, idx) => {
+              const isExpanded = expandedIdx === idx;
+              const isLong = result.content.length > 300;
+
+              return (
+                <Card key={idx}>
+                  <CardHeader className="py-4 pb-2">
+                    <div className="flex items-start justify-between">
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <FileText className="h-4 w-4 text-primary" />
+                        {result.metadata?.source || "Unknown Document"}
+                      </CardTitle>
+                      {result.score !== undefined && (
+                        <div className="text-xs font-mono bg-muted px-2 py-1 rounded">
+                          Score: {result.score.toFixed(4)}
+                        </div>
+                      )}
+                    </div>
+                    <CardDescription>
+                      Page: {result.metadata?.page || "N/A"}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="py-4 pt-0">
+                    <div
+                      className={`text-sm bg-muted/50 p-3 rounded-md ${!isExpanded && isLong ? "line-clamp-4" : ""}`}
+                    >
+                      {result.content}
+                    </div>
+                    {isLong && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="mt-2 h-7 text-xs"
+                        onClick={() =>
+                          setExpandedIdx(isExpanded ? null : idx)
+                        }
+                      >
+                        {isExpanded ? (
+                          <>
+                            <ChevronUp className="h-3 w-3 mr-1" /> Show less
+                          </>
+                        ) : (
+                          <>
+                            <ChevronDown className="h-3 w-3 mr-1" /> Show more
+                          </>
+                        )}
+                      </Button>
                     )}
-                  </div>
-                  <CardDescription>
-                    Page: {result.metadata?.page || "N/A"}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="py-4 pt-0">
-                  <div className="text-sm bg-muted/50 p-3 rounded-md line-clamp-4">
-                    {result.content}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
 
           {!isLoading && results.length === 0 && (

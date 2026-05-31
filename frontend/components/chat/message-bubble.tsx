@@ -1,15 +1,16 @@
 import { cn } from "@/lib/utils";
 import { Message } from "@/lib/types";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { BrainCircuit, User, Copy, Check } from "lucide-react";
+import { BrainCircuit, User, Copy, Check, RefreshCw } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { useState } from "react";
+import { useState, memo } from "react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
 interface MessageBubbleProps {
   message: Message;
+  onRegenerate?: () => void;
 }
 
 interface StructuredResponseBlock {
@@ -54,10 +55,13 @@ function parseStructuredBlocks(
   }
 }
 
-export function MessageBubble({ message }: MessageBubbleProps) {
+export const MessageBubble = memo(function MessageBubble({
+  message,
+  onRegenerate,
+}: MessageBubbleProps) {
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
-  
+
   const markdownContent =
     typeof message.content === "string"
       ? message.content
@@ -81,10 +85,12 @@ export function MessageBubble({ message }: MessageBubbleProps) {
       )}
     >
       <div className="max-w-4xl mx-auto flex w-full gap-4 lg:gap-6">
-        <Avatar className={cn(
-          "h-10 w-10 shrink-0 border-2 shadow-sm",
-          isUser ? "border-primary/20" : "border-primary/40"
-        )}>
+        <Avatar
+          className={cn(
+            "h-10 w-10 shrink-0 border-2 shadow-sm",
+            isUser ? "border-primary/20" : "border-primary/40",
+          )}
+        >
           {isUser ? (
             <AvatarFallback className="bg-gradient-to-br from-primary/10 to-primary/5 text-primary">
               <User size={20} />
@@ -100,22 +106,40 @@ export function MessageBubble({ message }: MessageBubbleProps) {
           <div className="flex items-center justify-between">
             <div className="font-bold text-sm flex items-center gap-2 tracking-tight">
               {isUser ? "You" : "ArchiveAI Assistant"}
-              <span className="text-[10px] text-muted-foreground/60 font-medium uppercase tracking-widest">
+              <span className="text-xs text-muted-foreground/60 font-medium uppercase tracking-widest">
                 {new Date(message.timestamp).toLocaleTimeString([], {
                   hour: "2-digit",
                   minute: "2-digit",
                 })}
               </span>
             </div>
-            
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
-              onClick={copyToClipboard}
-            >
-              {copied ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
-            </Button>
+
+            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              {onRegenerate && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={onRegenerate}
+                  aria-label="Regenerate response"
+                >
+                  <RefreshCw size={14} />
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={copyToClipboard}
+                aria-label="Copy message"
+              >
+                {copied ? (
+                  <Check size={14} className="text-emerald-500" />
+                ) : (
+                  <Copy size={14} />
+                )}
+              </Button>
+            </div>
           </div>
 
           <div className="text-[15px] prose dark:prose-invert prose-p:leading-relaxed prose-pre:p-0 max-w-none break-words">
@@ -167,4 +191,4 @@ export function MessageBubble({ message }: MessageBubbleProps) {
       </div>
     </div>
   );
-}
+});

@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { ChatArea } from "@/components/chat/chat-area";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useSearchParams } from "next/navigation";
+import { Skeleton } from "@/components/ui/skeleton";
 
 function ChatPageContent() {
   const searchParams = useSearchParams();
@@ -29,8 +30,10 @@ export default function ChatPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex-1 flex items-center justify-center">
-          <div className="animate-pulse text-muted-foreground">Loading...</div>
+        <div className="flex-1 flex flex-col items-center justify-center gap-4 p-8">
+          <Skeleton className="h-16 w-full max-w-2xl rounded-xl" />
+          <Skeleton className="h-24 w-full max-w-2xl rounded-xl" />
+          <Skeleton className="h-16 w-full max-w-2xl rounded-xl" />
         </div>
       }
     >
