@@ -296,7 +296,7 @@ export function DocumentTable({ refreshTrigger }: { refreshTrigger: number }) {
             <DialogHeader>
               <DialogTitle>Document Structure: {activeFile}</DialogTitle>
             </DialogHeader>
-            <ScrollArea className="flex-1 bg-muted/30 p-4 rounded-md border mt-2 font-mono text-xs whitespace-pre-wrap">
+            <ScrollArea className="flex-1 min-h-0 bg-muted/30 p-4 rounded-md border mt-2 font-mono text-xs whitespace-pre-wrap">
               {structureData || "No structure data found."}
             </ScrollArea>
           </DialogContent>
@@ -310,7 +310,7 @@ export function DocumentTable({ refreshTrigger }: { refreshTrigger: number }) {
                 Document Preview: {activeFile}
               </DialogTitle>
             </DialogHeader>
-            <ScrollArea className="flex-1 bg-muted/30 p-6 rounded-md border mt-2">
+            <ScrollArea className="flex-1 min-h-0 bg-muted/30 p-6 rounded-md border mt-2">
               {previewLoading ? (
                 <div className="space-y-3 p-4">
                   <Skeleton className="h-4 w-full" />
