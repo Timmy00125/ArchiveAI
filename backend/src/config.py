@@ -34,6 +34,7 @@ class Settings:
     ALLOWED_EXTENSIONS: set = {".pdf", ".docx", ".pptx", ".html", ".htm", ".txt", ".md"}
     UPLOAD_DIR: str = os.environ.get("UPLOAD_DIR", "./data/uploads")
     MARKDOWN_DIR: str = os.environ.get("MARKDOWN_DIR", "./data/markdown")
+    STRUCTURE_DIR: str = os.environ.get("STRUCTURE_DIR", "./data/structures")
 
     # ── Database (PostgreSQL) ────────────────────────────────────────────────
     POSTGRES_USER: str = os.environ.get("POSTGRES_USER", "archiveai")

@@ -2,6 +2,8 @@
 Document structure visualization for Docling processed documents.
 """
 
+import base64
+import io
 from typing import TYPE_CHECKING, Any, Dict, List
 
 if TYPE_CHECKING:
@@ -101,8 +103,8 @@ class DocumentStructureVisualizer:
                         "table_number": i,
                         "page": page_no,
                         "caption": caption,
-                        "dataframe": df,
-                        "shape": df.shape,
+                        "dataframe": df.to_dict(orient="records"),
+                        "shape": list(df.shape),
                         "is_empty": df.empty,
                     }
                 )
@@ -141,12 +143,15 @@ class DocumentStructureVisualizer:
                     else None
                 )
 
-                # Get PIL image if available
-                pil_image = None
+                # Get PIL image as base64 if available
+                pil_image_b64 = None
                 try:
                     if hasattr(pic, "image") and pic.image is not None:
                         if hasattr(pic.image, "pil_image"):
-                            pil_image = pic.image.pil_image
+                            img = pic.image.pil_image
+                            buffer = io.BytesIO()
+                            img.save(buffer, format="PNG")
+                            pil_image_b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
                 except Exception as e:
                     print(f"Warning: Could not extract image {i}: {e}")
 
@@ -155,7 +160,7 @@ class DocumentStructureVisualizer:
                         "picture_number": i,
                         "page": page_no,
                         "caption": caption,
-                        "pil_image": pil_image,  # Add PIL image
+                        "image_base64": pil_image_b64,
                         "bounding_box": {
                             "left": bbox.l,
                             "top": bbox.t,

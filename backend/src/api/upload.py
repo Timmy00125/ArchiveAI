@@ -4,6 +4,8 @@ Upload API router — file upload to index or for chat context.
 
 from __future__ import annotations
 
+import json
+import os
 import uuid
 from typing import List, Optional
 
@@ -104,16 +106,22 @@ async def upload_files(
         if result.get("status") == "indexed":
             total_indexed += 1
 
-            # Store Docling structure data for this session
+            # Store Docling structure data for this session and persist to disk
             try:
                 _, docling_docs = processor.process_file_bytes(
                     content, filename, upload_file.content_type or ""
                 )
                 if docling_docs:
                     viz = DocumentStructureVisualizer(docling_docs[0]["doc"])
-                    request.app.state.document_structures[filename] = (
-                        viz.export_full_structure()
+                    structure_data = viz.export_full_structure()
+                    request.app.state.document_structures[filename] = structure_data
+
+                    os.makedirs(settings.STRUCTURE_DIR, exist_ok=True)
+                    structure_path = os.path.join(
+                        settings.STRUCTURE_DIR, f"{filename}.json"
                     )
+                    with open(structure_path, "w", encoding="utf-8") as f:
+                        json.dump(structure_data, f, ensure_ascii=False)
             except Exception as viz_err:
                 logger.warning(
                     f"Could not build structure for '{filename}': {viz_err}"

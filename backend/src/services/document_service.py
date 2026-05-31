@@ -162,10 +162,13 @@ class DocumentService:
         try:
             upload_path = os.path.join(settings.UPLOAD_DIR, safe_filename)
             markdown_path = os.path.join(settings.MARKDOWN_DIR, f"{safe_filename}.md")
+            structure_path = os.path.join(settings.STRUCTURE_DIR, f"{safe_filename}.json")
             if os.path.exists(upload_path):
                 os.remove(upload_path)
             if os.path.exists(markdown_path):
                 os.remove(markdown_path)
+            if os.path.exists(structure_path):
+                os.remove(structure_path)
         except Exception as e:
             logger.warning(f"Could not clean up disk files for {safe_filename}: {e}")
 

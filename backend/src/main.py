@@ -8,6 +8,8 @@ Run with:
 from __future__ import annotations
 
 import gc
+import json
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -93,6 +95,21 @@ async def lifespan(app: FastAPI):
     app.state.chat_service = chat_service
     app.state.db_pool = pool
     app.state.document_structures = {}  # in-session Docling structure cache
+
+    # Load persisted structure files from disk
+    if os.path.isdir(settings.STRUCTURE_DIR):
+        for fname in os.listdir(settings.STRUCTURE_DIR):
+            if fname.endswith(".json"):
+                structure_path = os.path.join(settings.STRUCTURE_DIR, fname)
+                try:
+                    with open(structure_path, "r", encoding="utf-8") as f:
+                        app.state.document_structures[fname[:-5]] = json.load(f)
+                except Exception as e:
+                    logger.warning(f"Could not load structure file '{fname}': {e}")
+        if app.state.document_structures:
+            logger.info(
+                f"Loaded {len(app.state.document_structures)} persisted structure file(s)."
+            )
 
     logger.info(
         f"Startup complete. "

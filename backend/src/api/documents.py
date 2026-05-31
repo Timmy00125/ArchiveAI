@@ -4,6 +4,7 @@ Document management API router — list and delete indexed documents.
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -53,6 +54,7 @@ async def list_documents(
 @router.delete("")
 async def delete_document(
     body: DeleteDocumentRequest,
+    request: Request,
     document_service=Depends(get_document_service),
 ):
     """
@@ -65,6 +67,11 @@ async def delete_document(
         return JSONResponse({"error": "Filename is required"}, status_code=400)
 
     result = document_service.delete_document(filename)
+
+    if result.get("success"):
+        structures = getattr(request.app.state, "document_structures", {})
+        structures.pop(filename, None)
+
     status_code = 200 if result.get("success") else 404
     return JSONResponse(result, status_code=status_code)
 
@@ -98,6 +105,19 @@ async def get_document_structure(
     # Structure info is stored in app state; populated at upload time
     structures = getattr(request.app.state, "document_structures", {})
     structure = structures.get(filename)
+
+    if structure is None:
+        safe_filename = Path(filename).name
+        structure_path = os.path.join(
+            settings.STRUCTURE_DIR, f"{safe_filename}.json"
+        )
+        if os.path.exists(structure_path):
+            try:
+                with open(structure_path, "r", encoding="utf-8") as f:
+                    structure = json.load(f)
+                structures[filename] = structure
+            except Exception as e:
+                logger.warning(f"Could not load structure from disk for '{filename}': {e}")
 
     if structure is None:
         return JSONResponse(
