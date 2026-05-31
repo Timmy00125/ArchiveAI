@@ -62,7 +62,7 @@ class DocumentService:
             with open(upload_path, "wb") as f:
                 f.write(content)
 
-            docs, _ = self.processor.process_file_bytes(content, safe_filename, content_type)
+            docs, docling_docs = self.processor.process_file_bytes(content, safe_filename, content_type)
 
             if not docs:
                 return {"status": "error", "filename": safe_filename, "error": "No content extracted"}
@@ -79,7 +79,7 @@ class DocumentService:
 
             chunks_added = self.vs_manager.add_documents(docs)
             logger.info(f"✅ Indexed '{safe_filename}': {chunks_added} chunks")
-            return {"status": "indexed", "filename": safe_filename, "chunks_added": chunks_added}
+            return {"status": "indexed", "filename": safe_filename, "chunks_added": chunks_added, "_docling_docs": docling_docs}
 
         except Exception as e:
             logger.error(f"❌ Failed to index '{filename}': {e}")

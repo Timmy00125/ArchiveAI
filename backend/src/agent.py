@@ -42,13 +42,15 @@ When answering:
 def create_documentation_agent(
     tools: List[BaseTool],
     model_name: str | None = None,
+    checkpointer: Any | None = None,
 ):
     """
     Create a document intelligence assistant agent using LangGraph.
 
     Args:
-        tools:       List of tools the agent can use
-        model_name:  Gemini model name (defaults to settings.GEMINI_MODEL)
+        tools:        List of tools the agent can use
+        model_name:   Gemini model name (defaults to settings.GEMINI_MODEL)
+        checkpointer: Optional LangGraph checkpointer for multi-turn memory
 
     Returns:
         Compiled LangGraph agent
@@ -64,7 +66,9 @@ def create_documentation_agent(
         location=settings.GOOGLE_CLOUD_LOCATION,
     )
 
-    agent = create_react_agent(llm, tools=tools, prompt=SYSTEM_PROMPT)
+    agent = create_react_agent(
+        llm, tools=tools, prompt=SYSTEM_PROMPT, checkpointer=checkpointer
+    )
     return agent
 
 

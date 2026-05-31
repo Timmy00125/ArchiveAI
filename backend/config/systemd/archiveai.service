@@ -7,8 +7,11 @@ Type=simple
 User=archiveai
 WorkingDirectory=/opt/archiveai/backend
 Environment="PATH=/opt/archiveai/backend/.venv/bin"
+Environment="HF_HOME=/opt/archiveai/backend/data/.cache/huggingface"
+Environment="TRANSFORMERS_CACHE=/opt/archiveai/backend/data/.cache/huggingface"
+Environment="HF_HUB_CACHE=/opt/archiveai/backend/data/.cache/huggingface/hub"
 EnvironmentFile=/opt/archiveai/backend/.env
-ExecStart=/opt/archiveai/backend/.venv/bin/uvicorn src.main:app --host 0.0.0.0 --port 8000
+ExecStart=/opt/archiveai/backend/.venv/bin/uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 2
 Restart=always
 RestartSec=5
 
@@ -18,6 +21,7 @@ PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=/opt/archiveai/backend/data
+ReadWritePaths=/opt/archiveai/backend/.venv/lib/python3.10/site-packages/rapidocr/models
 
 [Install]
 WantedBy=multi-user.target

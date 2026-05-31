@@ -108,9 +108,7 @@ async def upload_files(
 
             # Store Docling structure data for this session and persist to disk
             try:
-                _, docling_docs = processor.process_file_bytes(
-                    content, filename, upload_file.content_type or ""
-                )
+                docling_docs = result.pop("_docling_docs", None)
                 if docling_docs:
                     viz = DocumentStructureVisualizer(docling_docs[0]["doc"])
                     structure_data = viz.export_full_structure()

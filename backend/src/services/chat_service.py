@@ -257,6 +257,7 @@ class ChatService:
         vision_tool = create_vision_tool()
         self._agent = create_documentation_agent(
             tools=[search_tool, summarize_tool, vision_tool],
+            checkpointer=self._memory,
         )
 
     # ── Public API ─────────────────────────────────────────────────────────────
@@ -295,9 +296,16 @@ class ChatService:
     async def _stream_with_session(
         self, prompt: str, session_id: str
     ) -> AsyncGenerator[str, None]:
-        """Wrapper that tags the stream with session info at the end."""
+        """Wrapper that persists messages to DB after the stream completes."""
+        self._save_message(session_id, "user", prompt)
+
+        accumulated_response = ""
         async for token in astream_agent_response(self._agent, prompt, session_id):
+            accumulated_response += token
             yield token
+
+        if accumulated_response:
+            self._save_message(session_id, "assistant", accumulated_response)
 
     def get_history(self, session_id: str) -> Dict[str, Any]:
         """

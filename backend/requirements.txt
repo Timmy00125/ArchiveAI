@@ -1,6 +1,7 @@
 # Document processing
 docling>=2.55.0
 langchain-docling>=0.1.0
+rapidocr-onnxruntime>=1.4.0
 
 # LangChain / LangGraph
 langchain>=0.3.0
