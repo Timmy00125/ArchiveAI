@@ -82,9 +82,17 @@ class VectorStoreManager:
             return 0
 
         store = self._get_store()
-        store.add_documents(chunks)
 
-        logger.info(f"Added {len(chunks)} chunks to vector store")
+        batch_size = 50
+        for i in range(0, len(chunks), batch_size):
+            batch = chunks[i : i + batch_size]
+            store.add_documents(batch)
+            logger.info(
+                f"Added batch {i // batch_size + 1} "
+                f"({len(batch)} chunks) to vector store"
+            )
+
+        logger.info(f"Added {len(chunks)} chunks total to vector store")
         return len(chunks)
 
     def delete_documents_by_filename(self, filename: str) -> int:
