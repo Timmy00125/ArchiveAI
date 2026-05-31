@@ -15,12 +15,14 @@ It is written specifically for this repository.
 
 From the current codebase, the backend depends on the following:
 
-- A **FastAPI backend** in `backend/`
-- A **PostgreSQL database** for chat history and session storage
+- A **FastAPI backend** in `backend/` (entrypoint: `src.main:app`)
+- A **PostgreSQL database** for:
+  - chat history and session storage
+  - vector embeddings (via **pgvector** extension)
 - **Persistent local storage** for:
-  - uploaded files
-  - generated markdown files
-  - persisted Chroma vector index
+  - uploaded files (`UPLOAD_DIR`)
+  - generated markdown files (`MARKDOWN_DIR`)
+  - document structure JSON files (`STRUCTURE_DIR`)
 - **Google Vertex AI / Gemini** for LLM + embeddings
 
 Important details from this project:
@@ -31,17 +33,18 @@ Important details from this project:
   - `POSTGRES_DB`
   - `POSTGRES_HOST`
   - `POSTGRES_PORT`
+- Vectors are stored in PostgreSQL using pgvector (configured via `PGVECTOR_COLLECTION`)
 - The backend stores local files in:
-  - `UPLOAD_DIR`
-  - `MARKDOWN_DIR`
-  - `CHROMA_PERSIST_DIR`
+  - `UPLOAD_DIR` → uploaded source documents
+  - `MARKDOWN_DIR` → extracted/generated markdown
+  - `STRUCTURE_DIR` → Docling document structure JSON
 - The backend expects:
   - `GOOGLE_CLOUD_PROJECT`
   - `GOOGLE_CLOUD_LOCATION`
 - The backend API prefix is `/api/v1`
 - Health endpoint is `/health`
 
-Because this project uses **Chroma with local persistence**, the cheapest and simplest GCP approach for now is **not Cloud Run**.
+Because this project uses **pgvector inside PostgreSQL**, all vector data lives in Cloud SQL alongside relational data — no separate vector database or local vector index is needed.
 
 ### Recommended prototype architecture
 
@@ -57,10 +60,9 @@ For a prototype/demo deployment, use:
 
 This is the best fit because:
 
-- your backend writes to disk locally
-- Chroma persistence works naturally on a VM
-- uploads and generated markdown remain on the server filesystem
-- setup is easier than redesigning storage for stateless hosting
+- your backend writes uploads, markdown, and structure files to disk locally
+- pgvector stores embeddings inside Cloud SQL — no separate vector DB to manage
+- setup is straightforward without redesigning storage for stateless hosting
 
 ---
 
@@ -70,8 +72,8 @@ For demos and early prototypes, I recommend this:
 
 ### Option A — Recommended
 
-- **1 small Ubuntu VM** for the backend + Chroma + uploaded files
-- **1 small Cloud SQL PostgreSQL instance** for chat/session data
+- **1 small Ubuntu VM** for the backend + uploaded files + local artifacts
+- **1 small Cloud SQL PostgreSQL instance** for chat/session data + pgvector embeddings
 
 This gives you:
 
@@ -130,13 +132,13 @@ Use this setup:
    - Use `uvicorn` behind `nginx` or expose it directly for early testing
 
 3. **Database**
-   - Use Cloud SQL PostgreSQL
-   - Store only chat/session relational data there
+   - Use Cloud SQL PostgreSQL with the **pgvector** extension enabled
+   - Stores chat history, session data, and vector embeddings all together
 
 4. **Local persistent files on VM disk**
    - `./data/uploads`
    - `./data/markdown`
-   - `./chroma_db`
+   - `./data/structures`
 
 5. **AI services**
    - Use Vertex AI with the VM service account
@@ -249,6 +251,14 @@ Record these values safely:
 - `POSTGRES_USER=archiveai`
 - `POSTGRES_PASSWORD=...`
 
+**Important:** After creating the database, enable the `pgvector` extension:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+```
+
+This extension is required — the backend uses it to store and query document embeddings. Cloud SQL supports pgvector natively on PostgreSQL 15+.
+
 ### Step 8.3 Choose connectivity method
 
 For prototype deployments, use **Private IP if you are comfortable with VPC setup**, otherwise use **Public IP with authorized access locked down to your VM**.
@@ -267,9 +277,7 @@ Later, you can migrate to private IP.
 This VM will run:
 
 - FastAPI backend
-- Chroma persisted files
-- uploaded documents
-- generated markdown files
+- local file storage for uploads, markdown, and document structures
 
 ### Step 9.1 Pick VM size
 
@@ -446,8 +454,7 @@ GEMINI_MODEL=gemini-2.5-flash
 GEMINI_VISION_MODEL=gemini-2.5-flash
 GEMINI_EMBED_MODEL=text-embedding-004
 
-CHROMA_PERSIST_DIR=./chroma_db
-CHROMA_COLLECTION=documents
+PGVECTOR_COLLECTION=documents
 
 CHUNK_SIZE=1000
 CHUNK_OVERLAP=100
@@ -456,6 +463,7 @@ SEARCH_K=8
 MAX_UPLOAD_SIZE_MB=50
 UPLOAD_DIR=./data/uploads
 MARKDOWN_DIR=./data/markdown
+STRUCTURE_DIR=./data/structures
 
 POSTGRES_USER=archiveai
 POSTGRES_PASSWORD=YOUR_DB_PASSWORD
@@ -470,7 +478,9 @@ CORS_ORIGINS=http://localhost:3000,http://YOUR_VM_EXTERNAL_IP:3000,https://YOUR_
 
 - `POSTGRES_PORT` should be **`5432`** for Cloud SQL PostgreSQL, not `5433`
   - `5433` is only used in your local Docker Compose mapping
-- `CHROMA_PERSIST_DIR`, `UPLOAD_DIR`, and `MARKDOWN_DIR` stay local on the VM
+- `PGVECTOR_COLLECTION` names the pgvector collection inside PostgreSQL (default: `documents`)
+- `UPLOAD_DIR`, `MARKDOWN_DIR`, and `STRUCTURE_DIR` stay local on the VM
+- Vector embeddings are stored in PostgreSQL via pgvector — no separate vector DB directory needed
 - if your frontend is hosted elsewhere, add its real URL to `CORS_ORIGINS`
 
 ---
@@ -480,16 +490,18 @@ CORS_ORIGINS=http://localhost:3000,http://YOUR_VM_EXTERNAL_IP:3000,https://YOUR_
 This project writes files locally, so create those directories now:
 
 ```bash
-mkdir -p ~/ArchiveAI/backend/chroma_db
 mkdir -p ~/ArchiveAI/backend/data/uploads
 mkdir -p ~/ArchiveAI/backend/data/markdown
+mkdir -p ~/ArchiveAI/backend/data/structures
 ```
 
 These hold:
 
-- Chroma persisted embeddings/index
 - uploaded source documents
 - markdown extracted/generated from documents
+- document structure JSON files from Docling parsing
+
+Vector embeddings are stored in PostgreSQL (pgvector), so no local vector directory is needed.
 
 ---
 
@@ -529,7 +541,7 @@ Run the app from the backend directory:
 ```bash
 cd ~/ArchiveAI/backend
 source .venv/bin/activate
-uvicorn app:app --host 0.0.0.0 --port 8000
+uvicorn src.main:app --host 0.0.0.0 --port 8000
 ```
 
 Now test from your browser or terminal:
@@ -571,7 +583,7 @@ After=network.target
 User=$USER
 WorkingDirectory=/home/YOUR_VM_USERNAME/ArchiveAI/backend
 Environment="PATH=/home/YOUR_VM_USERNAME/ArchiveAI/backend/.venv/bin"
-ExecStart=/home/YOUR_VM_USERNAME/ArchiveAI/backend/.venv/bin/uvicorn app:app --host 0.0.0.0 --port 8000
+ExecStart=/home/YOUR_VM_USERNAME/ArchiveAI/backend/.venv/bin/uvicorn src.main:app --host 0.0.0.0 --port 8000
 Restart=always
 RestartSec=5
 
@@ -727,14 +739,14 @@ GOOGLE_CLOUD_LOCATION=us-central1
 GEMINI_MODEL=gemini-2.5-flash
 GEMINI_VISION_MODEL=gemini-2.5-flash
 GEMINI_EMBED_MODEL=text-embedding-004
-CHROMA_PERSIST_DIR=./chroma_db
-CHROMA_COLLECTION=documents
+PGVECTOR_COLLECTION=documents
 CHUNK_SIZE=1000
 CHUNK_OVERLAP=100
 SEARCH_K=8
 MAX_UPLOAD_SIZE_MB=50
 UPLOAD_DIR=./data/uploads
 MARKDOWN_DIR=./data/markdown
+STRUCTURE_DIR=./data/structures
 POSTGRES_USER=archiveai
 POSTGRES_PASSWORD=YOUR_DB_PASSWORD
 POSTGRES_DB=archiveai_chat
@@ -801,30 +813,30 @@ This is very important for this project.
 
 - chat history
 - session data
+- **vector embeddings** (pgvector) — all indexed document chunks
 - relational persistence handled by `chat_service`
 
 ### What lives on VM disk
 
-- uploaded files
+- uploaded source documents
 - markdown output
-- Chroma vector store persistence
+- document structure JSON files
 
 That means:
 
-- **Cloud SQL backups do not back up Chroma or uploaded files**
-- if the VM disk is lost, you may lose indexed documents and uploads
-
-For a prototype this may be acceptable, but you should understand the trade-off.
+- **Cloud SQL backups now cover everything important** — chat history, sessions, AND vector embeddings are all in PostgreSQL
+- uploaded files, markdown artifacts, and structure files live on the VM disk
+- if the VM disk is lost, you can re-upload and re-index documents from source files
 
 ### Minimum backup recommendation
 
-At least periodically back up these directories from the VM:
+- **Enable automated Cloud SQL backups** — this protects your chat history, sessions, and vector index all at once
+- Periodically back up these directories from the VM if the source files matter:
+  - `backend/data/uploads`
+  - `backend/data/markdown`
+  - `backend/data/structures`
 
-- `backend/chroma_db`
-- `backend/data/uploads`
-- `backend/data/markdown`
-
-You can later sync them to a GCS bucket if needed.
+You can later sync VM artifacts to a GCS bucket if needed.
 
 ---
 
@@ -833,7 +845,7 @@ You can later sync them to a GCS bucket if needed.
 To keep hosting cheap:
 
 1. Use **one small VM** only
-2. Use a **small Cloud SQL PostgreSQL instance**
+2. Use a **small Cloud SQL PostgreSQL instance** (pgvector runs inside it — no extra service)
 3. Keep documents small during demos
 4. Delete old uploads you no longer need
 5. Reuse indexed documents instead of re-uploading repeatedly
@@ -850,8 +862,9 @@ For this project, the likely hidden cost is **embedding/regeneration activity**,
 If users keep uploading many large documents repeatedly, costs can rise from:
 
 - document parsing work
-- embeddings generation
+- embeddings generation (Vertex AI charges per 1,000 characters embedded)
 - repeated re-indexing
+- large pgvector indexes increasing Cloud SQL storage usage
 
 ---
 
@@ -862,7 +875,7 @@ For your current stage, avoid these unless you really need them:
 - GKE / Kubernetes
 - multi-zone setup
 - autoscaling microservices
-- managed vector database migration
+- separate vector database (pgvector in Cloud SQL is already sufficient)
 - separate worker queues
 - Cloud Run without redesigning storage
 
@@ -883,9 +896,8 @@ You should revisit the architecture when:
 At that point, a better architecture would be something like:
 
 - Cloud Run or GKE for backend
-- Cloud SQL for PostgreSQL
-- Cloud Storage for uploaded files and markdown artifacts
-- a more production-grade vector database or redesigned vector persistence
+- Cloud SQL for PostgreSQL (with pgvector — this already scales well)
+- Cloud Storage for uploaded files, markdown artifacts, and structure files
 
 But that is **not necessary yet** for your current prototype goal.
 
@@ -901,6 +913,7 @@ Use this checklist when deploying:
 - [ ] Cloud SQL Admin API enabled
 - [ ] Vertex AI API enabled
 - [ ] Cloud SQL PostgreSQL created
+- [ ] `pgvector` extension enabled (`CREATE EXTENSION IF NOT EXISTS vector`)
 - [ ] DB name `archiveai_chat` created
 - [ ] DB user `archiveai` created
 - [ ] VM created
@@ -910,9 +923,9 @@ Use this checklist when deploying:
 - [ ] Python venv created
 - [ ] `pip install -r requirements.txt` completed
 - [ ] `.env` created in `backend/`
-- [ ] storage directories created
+- [ ] storage directories created (`data/uploads`, `data/markdown`, `data/structures`)
 - [ ] backend starts successfully
-- [ ] `/health` responds correctly
+- [ ] `/health` responds correctly (should show `"backend": "pgvector"`)
 - [ ] systemd service enabled
 - [ ] Nginx configured
 - [ ] CORS updated for frontend
@@ -925,17 +938,17 @@ Use this checklist when deploying:
 For **ArchiveAI as it exists today**, my recommendation is:
 
 - **Backend:** Google Compute Engine VM
-- **Database:** Cloud SQL for PostgreSQL
+- **Database:** Cloud SQL for PostgreSQL (with pgvector for embeddings)
 - **AI:** Vertex AI
 - **Frontend:** host separately, ideally Vercel
-- **Persistence for prototype:** local VM disk
+- **Persistence for prototype:** Cloud SQL for all relational + vector data; local VM disk for uploads, markdown, and structures
 
 This is the best balance of:
 
 - low cost
 - low complexity
-- compatibility with your current code
-- minimal refactoring
+- compatibility with your current code (pgvector in PostgreSQL)
+- Cloud SQL backups cover all critical data (chat + vectors)
 
 ---
 
@@ -946,18 +959,19 @@ If you want the short version, do this:
 1. Create a GCP project
 2. Enable Compute Engine, Cloud SQL, Vertex AI APIs
 3. Create a small Cloud SQL PostgreSQL instance
-4. Create a small Ubuntu VM
-5. Attach a service account with Vertex AI access
-6. Clone this repo onto the VM
-7. Install Python + dependencies
-8. Create `backend/.env`
-9. Point PostgreSQL config to Cloud SQL
-10. Create `chroma_db`, `data/uploads`, and `data/markdown`
-11. Run `uvicorn app:app --host 0.0.0.0 --port 8000`
-12. Test `/health`
-13. Put it behind `systemd`
-14. Add Nginx
-15. Optionally add HTTPS
+4. Enable the `pgvector` extension on the database
+5. Create a small Ubuntu VM
+6. Attach a service account with Vertex AI access
+7. Clone this repo onto the VM
+8. Install Python + dependencies
+9. Create `backend/.env`
+10. Point PostgreSQL config to Cloud SQL
+11. Create `data/uploads`, `data/markdown`, and `data/structures` directories
+12. Run `uvicorn src.main:app --host 0.0.0.0 --port 8000`
+13. Test `/health` (should show `"backend": "pgvector"`)
+14. Put it behind `systemd`
+15. Add Nginx
+16. Optionally add HTTPS
 
 ---
 
@@ -965,27 +979,28 @@ If you want the short version, do this:
 
 Once the prototype is stable, the next best improvements are:
 
-1. move uploaded files and markdown artifacts to **Google Cloud Storage**
+1. move uploaded files, markdown artifacts, and structure files to **Google Cloud Storage**
 2. use **Cloud SQL Auth Proxy** instead of public IP
 3. add **HTTPS with a real domain**
 4. add **basic authentication or API protection**
-5. add scheduled backups for local Chroma/upload directories
-6. consider a more scalable vector storage strategy
+5. add scheduled backups for local upload/markdown/structure directories
+6. pgvector in Cloud SQL already scales well — consider index tuning (IVFFlat/HNSW) before migrating to a separate vector DB
 
 ---
 
 ## 33. Important project-specific warning
 
-This application currently relies on **filesystem persistence** for important non-Postgres data.
+This application stores **all critical data in PostgreSQL** (chat history, sessions, and pgvector embeddings).
 
-That means your deployment is only as durable as:
+Only transient artifacts live on the VM disk:
 
-- the VM disk
-- your backup discipline
+- uploaded source files
+- generated markdown
+- document structure JSON
 
-So for a **prototype/demo**, this setup is perfectly reasonable.
+So for a **prototype/demo**, this setup is perfectly reasonable — Cloud SQL backups protect everything that matters.
 
-For **serious production usage**, you should eventually redesign file/vector persistence away from a single VM disk.
+For **serious production usage**, you should eventually move file artifacts to Cloud Storage so the VM itself becomes stateless and replaceable.
 
 ---
 
@@ -993,11 +1008,11 @@ For **serious production usage**, you should eventually redesign file/vector per
 
 For this repository, the most practical GCP hosting strategy is:
 
-- **Compute Engine VM** for the backend and Chroma persistence
-- **Cloud SQL PostgreSQL** for the database
+- **Compute Engine VM** for the backend and local file artifacts
+- **Cloud SQL PostgreSQL** for relational data and pgvector embeddings
 - **Vertex AI** for Gemini models and embeddings
 
-It is cheap, simple, and works with your current code without major changes.
+It is cheap, simple, and works with your current code without major changes. All critical data (chat history, sessions, vectors) lives in Cloud SQL where automated backups protect it.
 
 If you want, the next useful step after this guide would be one of these:
 
