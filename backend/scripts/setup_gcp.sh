@@ -57,8 +57,9 @@ if gcloud sql instances describe "$SQL_INSTANCE" >/dev/null 2>&1; then
 else
     echo "    Creating instance (this may take a few minutes)..."
     gcloud sql instances create "$SQL_INSTANCE" \
-        --database-version=POSTGRES_15 \
+        --database-version=POSTGRES_16 \
         --tier=db-f1-micro \
+        --edition=ENTERPRISE \
         --region="$REGION" \
         --storage-size=10GB \
         --storage-auto-increase \
@@ -77,9 +78,12 @@ DB_PASSWORD="${DB_PASSWORD:-$(openssl rand -base64 24 | tr -dc 'a-zA-Z0-9' | hea
 gcloud sql databases create "$DB_NAME" --instance="$SQL_INSTANCE" 2>/dev/null || echo "    Database already exists."
 gcloud sql users create "$DB_USER" --instance="$SQL_INSTANCE" --password="$DB_PASSWORD" 2>/dev/null || echo "    User already exists."
 
-# Enable pgvector
-echo "    Enabling pgvector extension..."
-gcloud sql instances patch "$SQL_INSTANCE" --database-flags=cloudsql.enable_pgvector=on 2>/dev/null || true
+# pgvector is natively supported on Cloud SQL PostgreSQL 16.
+# It must be created as an extension inside the database (not via instance flags).
+echo "    pgvector is available by default on POSTGRES_16."
+echo "    You must create the extension after connecting:"
+echo "      CREATE EXTENSION IF NOT EXISTS vector;"
+
 
 # ── 5. Create Compute Engine VM ─────────────────────────────────────────────
 echo "[5/6] Creating Compute Engine VM..."

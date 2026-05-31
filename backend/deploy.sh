@@ -61,9 +61,12 @@ fi
 
 # ── 6. Test database connectivity ──────────────────────────────────────────
 echo "[6/9] Testing database connectivity..."
+set +u
 source "$BACKEND_DIR/.env"
+PG_URI="${POSTGRES_URI:-postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}}"
+set -u
 if command -v psql >/dev/null 2>&1; then
-    if psql "$POSTGRES_URI" -c "SELECT 1;" >/dev/null 2>&1; then
+    if psql "$PG_URI" -c "SELECT 1;" >/dev/null 2>&1; then
         echo "    Database connection OK."
     else
         echo "    WARNING: Could not connect to PostgreSQL."
