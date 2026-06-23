@@ -70,7 +70,7 @@ if command -v psql >/dev/null 2>&1; then
         echo "    Database connection OK."
     else
         echo "    WARNING: Could not connect to PostgreSQL."
-        echo "    Please check your .env and Cloud SQL settings."
+        echo "    Please check your .env and your database provider (e.g. Neon)."
         echo "    Continuing anyway — the app will retry at startup."
     fi
 else

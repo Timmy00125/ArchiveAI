@@ -4,6 +4,7 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState } from "react";
 import { Menu, X } from "lucide-react";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const navLinks = [
   { label: "CHAT", href: "/chat" },
@@ -52,7 +53,7 @@ export function Navigation() {
             ))}
           </div>
 
-          <div className="hidden md:block">
+          <div className="hidden md:flex items-center gap-3">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -65,6 +66,13 @@ export function Navigation() {
                 LAUNCH
               </Link>
             </motion.div>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.5, delay: 0.7 }}
+            >
+              <ThemeToggle />
+            </motion.div>
           </div>
 
           <button
@@ -74,6 +82,9 @@ export function Navigation() {
           >
             {mobileOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
+          <div className="md:hidden">
+            <ThemeToggle />
+          </div>
         </div>
       </motion.nav>
 

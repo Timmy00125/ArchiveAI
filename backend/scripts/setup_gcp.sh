@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# Setup GCP infrastructure for ArchiveAI
+# Setup GCP infrastructure for ArchiveAI (Compute Engine only).
+# The PostgreSQL database runs on Neon (or another managed Postgres+pgvector
+# provider), NOT on Cloud SQL. This script only provisions the VM that runs the
+# FastAPI backend and the Gemini/Vertex AI service account it uses.
+#
 # Run this ONCE from your local machine with gcloud installed.
 # Make sure you have set your project first:
 #   gcloud config set project YOUR_PROJECT_ID
@@ -10,26 +14,23 @@ PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project)}"
 REGION="${REGION:-us-central1}"
 ZONE="${ZONE:-us-central1-a}"
 VM_NAME="${VM_NAME:-archiveai-backend}"
-SQL_INSTANCE="${SQL_INSTANCE:-archiveai-postgres}"
-DB_NAME="${DB_NAME:-archiveai_chat}"
-DB_USER="${DB_USER:-archiveai}"
 
 echo "========================================"
-echo " GCP Infrastructure Setup"
+echo " GCP Infrastructure Setup (VM only)"
 echo " Project: $PROJECT_ID"
 echo " Region:  $REGION"
+echo " DB:      Neon (managed Postgres + pgvector)"
 echo "========================================"
 
 # ── 1. Enable APIs ───────────────────────────────────────────────────────────
-echo "[1/6] Enabling GCP APIs..."
+echo "[1/4] Enabling GCP APIs..."
 gcloud services enable compute.googleapis.com \
-  sqladmin.googleapis.com \
   aiplatform.googleapis.com \
   iam.googleapis.com \
   cloudresourcemanager.googleapis.com
 
 # ── 2. Create service account ────────────────────────────────────────────────
-echo "[2/6] Creating service account..."
+echo "[2/4] Creating service account..."
 SA_NAME="archiveai-backend-sa"
 SA_EMAIL="$SA_NAME@$PROJECT_ID.iam.gserviceaccount.com"
 
@@ -40,53 +41,14 @@ else
         --display-name="ArchiveAI Backend Service Account"
 fi
 
-# Grant roles
+# Grant roles — only Gemini/Vertex AI access is needed (DB is external now).
 echo "    Granting roles..."
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
     --member="serviceAccount:$SA_EMAIL" \
     --role="roles/aiplatform.user" --condition=None
 
-gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-    --member="serviceAccount:$SA_EMAIL" \
-    --role="roles/cloudsql.client" --condition=None
-
-# ── 3. Create Cloud SQL instance ─────────────────────────────────────────────
-echo "[3/6] Creating Cloud SQL PostgreSQL instance..."
-if gcloud sql instances describe "$SQL_INSTANCE" >/dev/null 2>&1; then
-    echo "    Cloud SQL instance already exists."
-else
-    echo "    Creating instance (this may take a few minutes)..."
-    gcloud sql instances create "$SQL_INSTANCE" \
-        --database-version=POSTGRES_16 \
-        --tier=db-f1-micro \
-        --edition=ENTERPRISE \
-        --region="$REGION" \
-        --storage-size=10GB \
-        --storage-auto-increase \
-        --availability-type=zonal
-fi
-
-# Get SQL connection info
-SQL_IP=$(gcloud sql instances describe "$SQL_INSTANCE" --format='value(ipAddresses[].ipAddress)' | head -1)
-echo "    Cloud SQL IP: $SQL_IP"
-
-# ── 4. Create database and user ────────────────────────────────────────────
-echo "[4/6] Creating database and user..."
-# Generate a random password
-DB_PASSWORD="${DB_PASSWORD:-$(openssl rand -base64 24 | tr -dc 'a-zA-Z0-9' | head -c 24)}"
-
-gcloud sql databases create "$DB_NAME" --instance="$SQL_INSTANCE" 2>/dev/null || echo "    Database already exists."
-gcloud sql users create "$DB_USER" --instance="$SQL_INSTANCE" --password="$DB_PASSWORD" 2>/dev/null || echo "    User already exists."
-
-# pgvector is natively supported on Cloud SQL PostgreSQL 16.
-# It must be created as an extension inside the database (not via instance flags).
-echo "    pgvector is available by default on POSTGRES_16."
-echo "    You must create the extension after connecting:"
-echo "      CREATE EXTENSION IF NOT EXISTS vector;"
-
-
-# ── 5. Create Compute Engine VM ─────────────────────────────────────────────
-echo "[5/6] Creating Compute Engine VM..."
+# ── 3. Create Compute Engine VM ─────────────────────────────────────────────
+echo "[3/4] Creating Compute Engine VM..."
 if gcloud compute instances describe "$VM_NAME" --zone="$ZONE" >/dev/null 2>&1; then
     echo "    VM already exists."
 else
@@ -104,8 +66,8 @@ fi
 VM_IP=$(gcloud compute instances describe "$VM_NAME" --zone="$ZONE" --format='value(networkInterfaces[0].accessConfigs[0].natIP)')
 echo "    VM External IP: $VM_IP"
 
-# ── 6. Firewall rules ────────────────────────────────────────────────────────
-echo "[6/6] Creating firewall rules..."
+# ── 4. Firewall rules ────────────────────────────────────────────────────────
+echo "[4/4] Creating firewall rules..."
 gcloud compute firewall-rules create archiveai-allow-http \
     --allow tcp:80,tcp:443 \
     --target-tags=archiveai-backend \
@@ -121,17 +83,24 @@ echo "========================================"
 echo " Infrastructure setup complete!"
 echo "========================================"
 echo ""
-echo "  Cloud SQL IP:   $SQL_IP"
 echo "  VM External IP: $VM_IP"
-echo "  DB Password:    $DB_PASSWORD"
+echo ""
+echo "  Database: provisioned separately on Neon (https://neon.tech)"
+echo "    - Create a Postgres project, enable pgvector:"
+echo "        CREATE EXTENSION IF NOT EXISTS vector;"
+echo "    - Note the connection string Neon gives you."
 echo ""
 echo "  Next steps:"
-echo "  1. Authorize VM IP in Cloud SQL connections"
-echo "     (or use Cloud SQL Auth Proxy)"
-echo "  2. SSH into the VM:"
+echo "  1. SSH into the VM:"
 echo "     gcloud compute ssh $VM_NAME --zone=$ZONE"
-echo "  3. Clone your repo and run backend/deploy.sh"
-echo ""
-echo "  Your .env DB_HOST should be: $SQL_IP"
-echo "  Your .env DB_PASSWORD should be: $DB_PASSWORD"
+echo "  2. Clone your repo into /opt/archiveai"
+echo "  3. Create backend/.env with your Neon connection details:"
+echo "       POSTGRES_HOST=ep-xxxx.<region>.aws.neon.tech"
+echo "       POSTGRES_PORT=5432"
+echo "       POSTGRES_USER=<neon user>"
+echo "       POSTGRES_PASSWORD=<neon password>"
+echo "       POSTGRES_DB=<neon db>"
+echo "       GOOGLE_API_KEY=<your gemini key>"
+echo "     (Neon requires SSL — add POSTGRES_SSLMODE=require if you wire it up)"
+echo "  4. Run backend/deploy.sh on the VM"
 echo ""
