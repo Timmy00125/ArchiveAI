@@ -37,6 +37,10 @@ class Settings:
     STRUCTURE_DIR: str = os.environ.get("STRUCTURE_DIR", "./data/structures")
 
     # ── Database (PostgreSQL) ────────────────────────────────────────────────
+    # A full connection URL takes precedence over the individual POSTGRES_* vars.
+    # This is required for Neon/Cloud SQL/etc. where sslmode / extra params matter.
+    DATABASE_URL: str = os.environ.get("DATABASE_URL", "")
+
     POSTGRES_USER: str = os.environ.get("POSTGRES_USER", "archiveai")
     POSTGRES_PASSWORD: str = os.environ.get("POSTGRES_PASSWORD", "archiveai_password")
     POSTGRES_DB: str = os.environ.get("POSTGRES_DB", "archiveai_chat")
@@ -46,11 +50,19 @@ class Settings:
     @property
     def POSTGRES_URI(self) -> str:
         """Construct PostgreSQL connection URI."""
+        if self.DATABASE_URL:
+            return self.DATABASE_URL
         return f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
 
     @property
     def PGVECTOR_URI(self) -> str:
         """Construct PostgreSQL+psycopg URI for pgvector (SQLAlchemy driver)."""
+        if self.DATABASE_URL:
+            # SQLAlchemy needs the +psycopg2 driver; swap the scheme only.
+            url = self.DATABASE_URL
+            if url.startswith("postgresql://"):
+                url = "postgresql+psycopg2://" + url[len("postgresql://"):]
+            return url
         return f"postgresql+psycopg2://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
 
     # ── Server / CORS ─────────────────────────────────────────────────────────
