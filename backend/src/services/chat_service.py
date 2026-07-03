@@ -68,8 +68,15 @@ class ChatService:
                                 ON DELETE CASCADE,
                             role TEXT NOT NULL,
                             content TEXT NOT NULL,
+                            metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
                             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                         )
+                        """
+                    )
+                    cur.execute(
+                        """
+                        ALTER TABLE chat_messages
+                        ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb
                         """
                     )
                     cur.execute(
@@ -103,12 +110,34 @@ class ChatService:
         except Exception:
             return str(content)
 
-    def _save_message(self, session_id: str, role: str, content: Any) -> None:
+    @staticmethod
+    def _normalize_message_metadata(value: Any) -> Dict[str, Any]:
+        """Convert stored JSONB metadata into a stable dictionary."""
+        if isinstance(value, dict):
+            return value
+
+        if isinstance(value, str) and value.strip():
+            try:
+                parsed = json.loads(value)
+            except Exception:
+                return {}
+            return parsed if isinstance(parsed, dict) else {}
+
+        return {}
+
+    def _save_message(
+        self,
+        session_id: str,
+        role: str,
+        content: Any,
+        metadata: Dict[str, Any] | None = None,
+    ) -> None:
         """Persist a single message row and update session timestamp."""
         if self._db_pool is None:
             return
 
         serialized_content = self._serialize_message_content(content)
+        serialized_metadata = json.dumps(metadata or {}, ensure_ascii=False)
 
         try:
             with self._db_pool.connection() as conn:
@@ -123,10 +152,10 @@ class ChatService:
                     )
                     cur.execute(
                         """
-                        INSERT INTO chat_messages (session_id, role, content)
-                        VALUES (%s, %s, %s)
+                        INSERT INTO chat_messages (session_id, role, content, metadata)
+                        VALUES (%s, %s, %s, %s::jsonb)
                         """,
-                        (session_id, role, serialized_content),
+                        (session_id, role, serialized_content, serialized_metadata),
                     )
                     cur.execute(
                         """
@@ -154,7 +183,7 @@ class ChatService:
                 with conn.cursor() as cur:
                     cur.execute(
                         """
-                        SELECT role, content, created_at
+                        SELECT role, content, metadata, created_at
                         FROM chat_messages
                         WHERE session_id = %s
                         ORDER BY created_at ASC, id ASC
@@ -167,7 +196,8 @@ class ChatService:
                 {
                     "role": row[0],
                     "content": row[1],
-                    "timestamp": row[2].isoformat() if row[2] else "",
+                    "metadata": self._normalize_message_metadata(row[2]),
+                    "timestamp": row[3].isoformat() if row[3] else "",
                 }
                 for row in rows
             ]
@@ -260,6 +290,47 @@ class ChatService:
             checkpointer=self._memory,
         )
 
+    @staticmethod
+    def _evidence_excerpt(content: str, limit: int = 700) -> str:
+        """Return a compact, readable chunk preview for chat evidence."""
+        excerpt = " ".join(content.split())
+        if len(excerpt) <= limit:
+            return excerpt
+        return f"{excerpt[: limit - 3].rstrip()}..."
+
+    def collect_evidence(self, query: str, k: int = 5) -> List[Dict[str, Any]]:
+        """Return candidate source chunks for a prompt without mutating chat state."""
+        if not query or not query.strip():
+            return []
+
+        try:
+            results = self.vs_manager.search_with_scores(query, k=k)
+        except Exception as err:
+            logger.warning("Could not collect chat evidence: %s", err)
+            return []
+
+        evidence: List[Dict[str, Any]] = []
+        for index, (doc, score) in enumerate(results, start=1):
+            metadata = doc.metadata if isinstance(doc.metadata, dict) else {}
+            filename = metadata.get("filename") or metadata.get("source")
+            source = metadata.get("source") or filename or "Unknown source"
+            page = metadata.get("page") or metadata.get("page_number")
+
+            evidence.append(
+                {
+                    "id": f"{source}-{index}",
+                    "rank": index,
+                    "filename": str(filename or source),
+                    "source": str(source),
+                    "page": page,
+                    "score": float(score),
+                    "excerpt": self._evidence_excerpt(doc.page_content or ""),
+                    "metadata": metadata,
+                }
+            )
+
+        return evidence
+
     # ── Public API ─────────────────────────────────────────────────────────────
 
     async def chat(
@@ -267,6 +338,7 @@ class ChatService:
         prompt: str,
         session_id: str | None = None,
         stream: bool = False,
+        sources: List[Dict[str, Any]] | None = None,
     ) -> Dict[str, Any] | AsyncGenerator[str, None]:
         """
         Send a message and get a response.
@@ -277,24 +349,33 @@ class ChatService:
             stream:     If True returns an async generator of text tokens
 
         Returns:
-            If stream=False: {"response": str, "session_id": str}
+            If stream=False: {"response": str, "session_id": str, "sources": list}
             If stream=True:  async generator yielding text tokens
         """
         if not prompt or not prompt.strip():
             raise ValueError("Prompt is required")
 
         session_id = session_id or str(uuid.uuid4())
+        evidence = sources if sources is not None else self.collect_evidence(prompt)
 
         if stream:
-            return self._stream_with_session(prompt, session_id)
+            return self._stream_with_session(prompt, session_id, evidence)
 
         response = await invoke_agent(self._agent, prompt, session_id)
         self._save_message(session_id, "user", prompt)
-        self._save_message(session_id, "assistant", response)
-        return {"response": response, "session_id": session_id}
+        self._save_message(
+            session_id,
+            "assistant",
+            response,
+            metadata={"sources": evidence} if evidence else None,
+        )
+        return {"response": response, "session_id": session_id, "sources": evidence}
 
     async def _stream_with_session(
-        self, prompt: str, session_id: str
+        self,
+        prompt: str,
+        session_id: str,
+        sources: List[Dict[str, Any]] | None = None,
     ) -> AsyncGenerator[str, None]:
         """Wrapper that persists messages to DB after the stream completes."""
         self._save_message(session_id, "user", prompt)
@@ -305,7 +386,12 @@ class ChatService:
             yield token
 
         if accumulated_response:
-            self._save_message(session_id, "assistant", accumulated_response)
+            self._save_message(
+                session_id,
+                "assistant",
+                accumulated_response,
+                metadata={"sources": sources or []} if sources else None,
+            )
 
     def get_history(self, session_id: str) -> Dict[str, Any]:
         """

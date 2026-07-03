@@ -1,8 +1,23 @@
+export interface EvidenceSource {
+  id?: string;
+  rank?: number;
+  filename?: string;
+  source?: string;
+  page?: number | string | null;
+  score?: number;
+  excerpt?: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
   timestamp: string;
+  metadata?: {
+    sources?: EvidenceSource[];
+    [key: string]: unknown;
+  };
 }
 
 export interface ChatSession {
