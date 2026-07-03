@@ -1,6 +1,8 @@
 services:
   postgres:
-    image: pgvector/pgvector:pg16
+    # Major Postgres upgrades require a dump/restore or a fresh volume.
+    # Do not reuse an existing Postgres 16 data directory with Postgres 18.
+    image: pgvector/pgvector:pg18
     container_name: archiveai-postgres
     environment:
       POSTGRES_USER: archiveai

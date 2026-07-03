@@ -21,7 +21,7 @@ graph TB
         end
 
         subgraph DockerServices["Docker Compose"]
-            PGContainer["postgres:16-alpine<br/>Container: archiveai-postgres"]
+            PGContainer["pgvector/pgvector:pg18<br/>Container: archiveai-postgres"]
             PGPort[":5433 → :5432"]
             PGVolume["postgres_data<br/>Named Docker Volume"]
             PGData["/var/lib/postgresql/data<br/>chat_sessions, chat_messages<br/>LangGraph checkpoints"]

@@ -15,6 +15,18 @@ ArchiveAI already provides:
 
 The core platform is functional and well-structured, but it is still at prototype maturity in several important areas: retrieval quality, ingestion scalability, governance, observability, and evaluation rigor.
 
+## Operational Upgrade: PostgreSQL 18
+
+ArchiveAI's local Docker database can be upgraded from PostgreSQL 16 to PostgreSQL 18 by switching the Compose image from `pgvector/pgvector:pg16` to `pgvector/pgvector:pg18`.
+
+Important constraint:
+
+- A PostgreSQL 16 data directory cannot be mounted directly by PostgreSQL 18.
+- For local development, either remove the existing `postgres_data` volume and start fresh, or perform a dump/restore migration into a new PostgreSQL 18 instance.
+- After restoring into PostgreSQL 18, ensure the vector extension is present and up to date:
+  - `CREATE EXTENSION IF NOT EXISTS vector;`
+  - `ALTER EXTENSION vector UPDATE;`
+
 ## Highest-Priority Upgrades
 
 ### 1. Improve Retrieval Quality

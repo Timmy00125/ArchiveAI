@@ -35,7 +35,7 @@ graph TB
     end
 
     subgraph StorageStack["Storage Stack"]
-        PostgreSQL["PostgreSQL 16<br/>Alpine (Docker)"]
+        PostgreSQL["PostgreSQL 18<br/>pgvector Docker image"]
         ChromaDisk["ChromaDB Disk<br/>./chroma_db/"]
     end
 

@@ -49,7 +49,7 @@ graph TB
     end
 
     subgraph Storage["Storage Layer"]
-        PG["PostgreSQL 16<br/>:5433<br/>chat_sessions<br/>chat_messages"]
+        PG["PostgreSQL 18<br/>:5433<br/>chat_sessions<br/>chat_messages"]
         Chroma["ChromaDB<br/>./chroma_db<br/>documents collection"]
         LangGraphCP["PostgresSaver<br/>LangGraph checkpoints"]
         TempFS["Temp Files<br/>/tmp uploads"]

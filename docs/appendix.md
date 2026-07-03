@@ -761,8 +761,8 @@ CREATE EXTENSION IF NOT EXISTS vector;
 
 | Component              | Version       | Purpose                                  |
 | ---------------------- | ------------- | ---------------------------------------- |
-| PostgreSQL             | 16            | Relational database and chat persistence |
-| pgvector               | (pg16 image)  | Vector embedding storage and search      |
+| PostgreSQL             | 18            | Relational database and chat persistence |
+| pgvector               | (pg18 image)  | Vector embedding storage and search      |
 | Docker Compose         | v2            | Local development orchestration          |
 | Nginx                  | (system)      | Reverse proxy for production deployment  |
 | systemd                | (system)      | Service management for production        |
@@ -778,7 +778,7 @@ The local development database is provisioned via Docker Compose:
 ```yaml
 services:
   postgres:
-    image: pgvector/pgvector:pg16
+    image: pgvector/pgvector:pg18
     container_name: archiveai-postgres
     environment:
       POSTGRES_USER: archiveai
