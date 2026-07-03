@@ -31,6 +31,10 @@ class SearchRequest(BaseModel):
     query: str
     k: int = Field(default=8, ge=1, le=50, description="Number of results to return")
     with_scores: bool = Field(default=False, description="Include similarity scores")
+    filename: Optional[str] = Field(
+        default=None,
+        description="Limit results to chunks from this indexed filename",
+    )
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -53,9 +57,15 @@ async def search(
     if not body.query or not body.query.strip():
         return JSONResponse({"error": "Query is required"}, status_code=400)
 
+    filename = body.filename.strip() if body.filename else None
+
     try:
         if body.with_scores:
-            raw = vs_manager.search_with_scores(body.query, k=body.k)
+            raw = vs_manager.search_with_scores(
+                body.query,
+                k=body.k,
+                filename=filename,
+            )
             results = [
                 {
                     "content": doc.page_content,
@@ -65,7 +75,11 @@ async def search(
                 for doc, score in raw
             ]
         else:
-            raw = vs_manager.search_similar(body.query, k=body.k)
+            raw = vs_manager.search_similar(
+                body.query,
+                k=body.k,
+                filename=filename,
+            )
             results = [
                 {
                     "content": doc.page_content,
@@ -76,6 +90,7 @@ async def search(
 
         return JSONResponse({
             "query": body.query,
+            "filename": filename,
             "results": results,
             "total": len(results),
         })
