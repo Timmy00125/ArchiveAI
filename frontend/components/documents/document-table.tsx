@@ -49,6 +49,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { fetchApi } from "@/lib/api";
 import { useDocuments } from "@/hooks/use-documents";
+import { StructureExplorer } from "./structure-explorer";
 
 interface DocumentContentResponse {
   filename: string;
@@ -61,7 +62,7 @@ export function DocumentTable({ refreshTrigger }: { refreshTrigger: number }) {
   const { data, isLoading, fetchDocuments, deleteDocument } = useDocuments();
 
   const [structureOpen, setStructureOpen] = useState(false);
-  const [structureData, setStructureData] = useState<string | null>(null);
+  const [structureData, setStructureData] = useState<unknown>(null);
   const [activeFile, setActiveFile] = useState<string | null>(null);
 
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -80,12 +81,7 @@ export function DocumentTable({ refreshTrigger }: { refreshTrigger: number }) {
       const res = await fetchApi<{ structure?: string | object }>(
         `/documents/${filename}/structure`,
       );
-      const structure = res.structure;
-      setStructureData(
-        typeof structure === "string"
-          ? structure
-          : JSON.stringify(structure || res, null, 2),
-      );
+      setStructureData(res.structure || res);
       setStructureOpen(true);
     } catch (error) {
       console.error(error);
@@ -292,13 +288,11 @@ export function DocumentTable({ refreshTrigger }: { refreshTrigger: number }) {
         </div>
 
         <Dialog open={structureOpen} onOpenChange={setStructureOpen}>
-          <DialogContent className="max-w-2xl h-[80vh] flex flex-col">
+          <DialogContent className="max-w-5xl h-[85vh] flex flex-col">
             <DialogHeader>
               <DialogTitle>Document Structure: {activeFile}</DialogTitle>
             </DialogHeader>
-            <ScrollArea className="flex-1 min-h-0 bg-muted/30 p-4 rounded-md border mt-2 font-mono text-xs whitespace-pre-wrap">
-              {structureData || "No structure data found."}
-            </ScrollArea>
+            <StructureExplorer structure={structureData} />
           </DialogContent>
         </Dialog>
 
