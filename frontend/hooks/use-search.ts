@@ -6,10 +6,17 @@ interface SearchResult {
   content: string;
   metadata: {
     source: string;
-    page: number;
+    page?: number | string;
+    filename?: string;
     [key: string]: unknown;
   };
   score?: number;
+}
+
+interface SearchOptions {
+  filename?: string;
+  k?: number;
+  withScores?: boolean;
 }
 
 export function useSearch() {
@@ -17,7 +24,7 @@ export function useSearch() {
   const [hasSearched, setHasSearched] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  const search = useCallback(async (query: string) => {
+  const search = useCallback(async (query: string, options: SearchOptions = {}) => {
     if (!query.trim()) return;
 
     setIsLoading(true);
@@ -27,8 +34,9 @@ export function useSearch() {
         method: "POST",
         body: JSON.stringify({
           query: query.trim(),
-          k: 10,
-          with_scores: true,
+          k: options.k ?? 10,
+          with_scores: options.withScores ?? true,
+          filename: options.filename || undefined,
         }),
       });
       setResults(data.results || []);

@@ -187,13 +187,28 @@ class VectorStoreManager:
             logger.warning(f"Could not check existence for '{filename}': {e}")
             return False
 
-    def search_similar(self, query: str, k: int | None = None) -> List[Document]:
+    @staticmethod
+    def _matches_filename(doc: Document, filename: str | None) -> bool:
+        """Return True when a document chunk belongs to the requested filename."""
+        if not filename:
+            return True
+
+        metadata = doc.metadata if isinstance(doc.metadata, dict) else {}
+        return metadata.get("filename") == filename or metadata.get("source") == filename
+
+    def search_similar(
+        self,
+        query: str,
+        k: int | None = None,
+        filename: str | None = None,
+    ) -> List[Document]:
         """
         Semantic similarity search.
 
         Args:
             query: Search query string
             k:     Number of results (defaults to settings.SEARCH_K)
+            filename: Optional metadata filename filter
 
         Returns:
             List of matching Document chunks
@@ -201,13 +216,31 @@ class VectorStoreManager:
         k = k or settings.SEARCH_K
         store = self._get_store()
         try:
+            if filename:
+                try:
+                    return store.similarity_search(
+                        query,
+                        k=k,
+                        filter={"filename": filename},
+                    )
+                except TypeError:
+                    results = store.similarity_search(query, k=max(k * 5, 25))
+                    return [
+                        doc
+                        for doc in results
+                        if self._matches_filename(doc, filename)
+                    ][:k]
+
             return store.similarity_search(query, k=k)
         except Exception as e:
             logger.error(f"Search error: {e}")
             return []
 
     def search_with_scores(
-        self, query: str, k: int | None = None
+        self,
+        query: str,
+        k: int | None = None,
+        filename: str | None = None,
     ) -> List[tuple[Document, float]]:
         """
         Similarity search returning (doc, score) pairs.
@@ -216,6 +249,24 @@ class VectorStoreManager:
         k = k or settings.SEARCH_K
         store = self._get_store()
         try:
+            if filename:
+                try:
+                    return store.similarity_search_with_score(
+                        query,
+                        k=k,
+                        filter={"filename": filename},
+                    )
+                except TypeError:
+                    results = store.similarity_search_with_score(
+                        query,
+                        k=max(k * 5, 25),
+                    )
+                    return [
+                        (doc, score)
+                        for doc, score in results
+                        if self._matches_filename(doc, filename)
+                    ][:k]
+
             return store.similarity_search_with_score(query, k=k)
         except Exception as e:
             logger.error(f"Search-with-scores error: {e}")
