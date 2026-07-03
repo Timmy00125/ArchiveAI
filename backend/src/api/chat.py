@@ -39,12 +39,19 @@ def get_chat_service(request: Request):
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-async def _sse_stream(generator: AsyncGenerator[str, None], session_id: str):
+async def _sse_stream(
+    generator: AsyncGenerator[str, None],
+    session_id: str,
+    sources: list[dict] | None = None,
+):
     """Wrap token stream as Server-Sent Events."""
     try:
         async for token in generator:
             # Escape newlines for SSE data field
             data = json.dumps({"token": token, "session_id": session_id})
+            yield f"data: {data}\n\n"
+        if sources:
+            data = json.dumps({"sources": sources, "session_id": session_id})
             yield f"data: {data}\n\n"
     except Exception as e:
         yield f"data: {json.dumps({'error': str(e)})}\n\n"
@@ -122,13 +129,15 @@ async def chat_query(
 
     try:
         if body.stream:
+            sources = chat_service.collect_evidence(body.prompt)
             generator = await chat_service.chat(
                 prompt=body.prompt,
                 session_id=session_id,
                 stream=True,
+                sources=sources,
             )
             return StreamingResponse(
-                _sse_stream(generator, session_id),
+                _sse_stream(generator, session_id, sources=sources),
                 media_type="text/event-stream",
                 headers={
                     "Cache-Control": "no-cache",

@@ -1,12 +1,29 @@
 import { cn } from "@/lib/utils";
-import { Message } from "@/lib/types";
+import { EvidenceSource, Message } from "@/lib/types";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { BrainCircuit, User, Copy, Check, RefreshCw } from "lucide-react";
+import {
+  BrainCircuit,
+  User,
+  Copy,
+  Check,
+  RefreshCw,
+  FileText,
+  PanelRightOpen,
+  Quote,
+} from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useState, memo } from "react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 
 interface MessageBubbleProps {
   message: Message;
@@ -55,12 +72,36 @@ function parseStructuredBlocks(
   }
 }
 
+function getEvidenceSources(message: Message): EvidenceSource[] {
+  const sources = message.metadata?.sources;
+  if (!Array.isArray(sources)) return [];
+
+  return sources.filter(
+    (source): source is EvidenceSource =>
+      !!source && typeof source === "object" && !Array.isArray(source),
+  );
+}
+
+function getSourceTitle(source: EvidenceSource, index: number): string {
+  return source.filename || source.source || `Source ${index + 1}`;
+}
+
+function getSourceMeta(source: EvidenceSource): string {
+  const details: string[] = [];
+  if (source.page) details.push(`Page ${source.page}`);
+  if (typeof source.score === "number") {
+    details.push(`Score ${source.score.toFixed(4)}`);
+  }
+  return details.join(" / ");
+}
+
 export const MessageBubble = memo(function MessageBubble({
   message,
   onRegenerate,
 }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
+  const [isEvidenceOpen, setIsEvidenceOpen] = useState(false);
 
   const markdownContent =
     typeof message.content === "string"
@@ -69,6 +110,7 @@ export const MessageBubble = memo(function MessageBubble({
   const structuredBlocks = !isUser
     ? parseStructuredBlocks(markdownContent)
     : null;
+  const sources = !isUser ? getEvidenceSources(message) : [];
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(markdownContent);
@@ -187,6 +229,109 @@ export const MessageBubble = memo(function MessageBubble({
               </ReactMarkdown>
             )}
           </div>
+
+          {sources.length > 0 && (
+            <>
+              <div className="not-prose rounded-lg border border-border/60 bg-background/70 p-3 shadow-sm">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                    <Quote className="h-3.5 w-3.5" />
+                    Sources
+                    <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+                      {sources.length}
+                    </Badge>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsEvidenceOpen(true)}
+                    className="w-full justify-center sm:w-auto"
+                  >
+                    <PanelRightOpen className="h-3.5 w-3.5" />
+                    Evidence
+                  </Button>
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {sources.slice(0, 4).map((source, index) => (
+                    <button
+                      key={source.id ?? `${getSourceTitle(source, index)}-${index}`}
+                      type="button"
+                      onClick={() => setIsEvidenceOpen(true)}
+                      className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+                    >
+                      <FileText className="h-3.5 w-3.5 shrink-0 text-primary" />
+                      <span className="truncate">
+                        {getSourceTitle(source, index)}
+                      </span>
+                      {source.page && (
+                        <span className="shrink-0 text-muted-foreground">
+                          p. {source.page}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <Sheet open={isEvidenceOpen} onOpenChange={setIsEvidenceOpen}>
+                <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
+                  <SheetHeader className="border-b px-5 py-4">
+                    <SheetTitle>Supporting Evidence</SheetTitle>
+                    <SheetDescription>
+                      Source chunks retrieved for this response.
+                    </SheetDescription>
+                  </SheetHeader>
+
+                  <div className="space-y-4 px-5 pb-6">
+                    {sources.map((source, index) => (
+                      <div
+                        key={source.id ?? `${getSourceTitle(source, index)}-${index}`}
+                        className="rounded-lg border border-border bg-muted/20 p-4"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 space-y-1">
+                            <div className="flex items-center gap-2 text-sm font-semibold">
+                              <FileText className="h-4 w-4 shrink-0 text-primary" />
+                              <span className="truncate">
+                                {getSourceTitle(source, index)}
+                              </span>
+                            </div>
+                            {getSourceMeta(source) && (
+                              <div className="text-xs text-muted-foreground">
+                                {getSourceMeta(source)}
+                              </div>
+                            )}
+                          </div>
+                          <Badge variant="outline" className="shrink-0">
+                            #{source.rank ?? index + 1}
+                          </Badge>
+                        </div>
+
+                        {source.excerpt && (
+                          <p className="mt-3 text-sm leading-relaxed text-foreground/85">
+                            {source.excerpt}
+                          </p>
+                        )}
+
+                        {source.metadata &&
+                          Object.keys(source.metadata).length > 0 && (
+                            <details className="mt-3 text-xs">
+                              <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                                Metadata
+                              </summary>
+                              <pre className="mt-2 max-h-48 overflow-auto rounded-md border bg-background p-3 text-[11px] text-muted-foreground">
+                                {JSON.stringify(source.metadata, null, 2)}
+                              </pre>
+                            </details>
+                          )}
+                      </div>
+                    ))}
+                  </div>
+                </SheetContent>
+              </Sheet>
+            </>
+          )}
         </div>
       </div>
     </div>

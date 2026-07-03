@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Message } from "@/lib/types";
+import { EvidenceSource, Message } from "@/lib/types";
 import { MessageBubble } from "./message-bubble";
 import { ChatInput } from "./chat-input";
 import { API_BASE_URL } from "@/lib/api";
@@ -84,6 +84,7 @@ export function ChatArea({
           const decoder = new TextDecoder();
           let accumulated = "";
           let newSessionId = sessionId;
+          let sources: EvidenceSource[] = [];
 
           while (true) {
             const { done, value } = await reader.read();
@@ -100,6 +101,10 @@ export function ChatArea({
                 const parsed = JSON.parse(data);
                 if (parsed.session_id) {
                   newSessionId = parsed.session_id;
+                }
+
+                if (Array.isArray(parsed.sources)) {
+                  sources = parsed.sources as EvidenceSource[];
                 }
 
                 const token =
@@ -126,6 +131,7 @@ export function ChatArea({
             id: (Date.now() + 1).toString(),
             role: "assistant",
             content: accumulated || "Sorry, I could not process that.",
+            metadata: sources.length > 0 ? { sources } : undefined,
             timestamp: new Date().toISOString(),
           };
 
@@ -139,6 +145,9 @@ export function ChatArea({
         } else {
           const json = await response.json();
           const nextSessionId = json.session_id ?? sessionId;
+          const sources = Array.isArray(json.sources)
+            ? (json.sources as EvidenceSource[])
+            : [];
 
           const assistantMsg: Message = {
             id: (Date.now() + 1).toString(),
@@ -146,6 +155,7 @@ export function ChatArea({
             content: normalizeMessageContent(
               json.response ?? json.answer ?? json.content ?? "Sorry, I could not process that.",
             ),
+            metadata: sources.length > 0 ? { sources } : undefined,
             timestamp: new Date().toISOString(),
           };
 

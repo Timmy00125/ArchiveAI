@@ -14,6 +14,7 @@ interface ChatHistoryMessage {
   role?: "user" | "assistant" | string;
   content?: unknown;
   text?: unknown;
+  metadata?: Message["metadata"];
   timestamp?: string;
 }
 
@@ -43,6 +44,7 @@ export default function ChatSessionPage() {
             id: message.id ?? `${sessionId}-${index}`,
             role: normalizeRole(message.role),
             content: normalizeMessageContent(message.content ?? message.text),
+            metadata: message.metadata,
             timestamp: message.timestamp ?? new Date().toISOString(),
           }));
           setInitialMessages(formatted);
